@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { ChevronRight, Brain } from 'lucide-react'
 import { prisma } from '@/lib/prisma'
+import { requireOrg } from '@/lib/org'
 import { DiagnosticForm } from '@/components/diagnostics/DiagnosticForm'
 
 interface Props {
@@ -8,7 +9,9 @@ interface Props {
 }
 
 export default async function NewDiagnosticPage({ searchParams }: Props) {
+  const { orgId } = await requireOrg()
   const vehicles = await prisma.vehicle.findMany({
+    where: { organizationId: orgId },
     orderBy: [{ make: 'asc' }, { model: 'asc' }],
     select: { id: true, make: true, model: true, plate: true, year: true },
   })

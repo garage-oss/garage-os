@@ -2,6 +2,7 @@ import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { ChevronRight, Phone, Mail, MapPin, Car, Wrench, Plus, Pencil } from 'lucide-react'
 import { getCustomer, calcTotalSpent } from '@/lib/customers'
+import { requireOrg } from '@/lib/org'
 import { VehicleCard } from '@/components/vehicles/VehicleCard'
 import { StatusBadge } from '@/components/work-orders/StatusBadge'
 import { DeleteButton } from '@/components/ui/DeleteButton'
@@ -19,7 +20,8 @@ function getInitials(name: string) {
 export const dynamic = 'force-dynamic'
 
 export default async function CustomerProfilePage({ params }: Props) {
-  const customer = await getCustomer(params.id)
+  const { orgId } = await requireOrg()
+  const customer = await getCustomer(orgId, params.id)
   if (!customer) notFound()
 
   const totalSpent = calcTotalSpent(customer.workOrders)

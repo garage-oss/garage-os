@@ -23,9 +23,12 @@ export type DiagnosticSessionData = {
   workOrder: { id: string; workOrderNumber: string } | null
 }
 
-export async function getDiagnosticSessions(vehicleId?: string): Promise<DiagnosticSessionData[]> {
+export async function getDiagnosticSessions(
+  orgId: string,
+  vehicleId?: string
+): Promise<DiagnosticSessionData[]> {
   const sessions = await prisma.diagnosticSession.findMany({
-    where: vehicleId ? { vehicleId } : undefined,
+    where: { organizationId: orgId, ...(vehicleId ? { vehicleId } : {}) },
     orderBy: { createdAt: 'desc' },
     include: {
       vehicle: { select: { id: true, plate: true, make: true, model: true, year: true } },
@@ -39,9 +42,12 @@ export async function getDiagnosticSessions(vehicleId?: string): Promise<Diagnos
   }))
 }
 
-export async function getDiagnosticSession(id: string): Promise<DiagnosticSessionData | null> {
-  const s = await prisma.diagnosticSession.findUnique({
-    where: { id },
+export async function getDiagnosticSession(
+  orgId: string,
+  id: string
+): Promise<DiagnosticSessionData | null> {
+  const s = await prisma.diagnosticSession.findFirst({
+    where: { id, organizationId: orgId },
     include: {
       vehicle: { select: { id: true, plate: true, make: true, model: true, year: true } },
       workOrder: { select: { id: true, workOrderNumber: true } },

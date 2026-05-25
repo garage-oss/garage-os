@@ -30,9 +30,13 @@ export type QuoteDetail = QuoteSummary & {
   items: QuoteItem[]
 }
 
-export async function getQuotes(filters?: { status?: QuoteStatus; search?: string }): Promise<QuoteSummary[]> {
+export async function getQuotes(
+  orgId: string,
+  filters?: { status?: QuoteStatus; search?: string }
+): Promise<QuoteSummary[]> {
   const quotes = await prisma.quote.findMany({
     where: {
+      organizationId: orgId,
       AND: [
         filters?.status ? { status: filters.status } : {},
         filters?.search
@@ -64,9 +68,9 @@ export async function getQuotes(filters?: { status?: QuoteStatus; search?: strin
   }))
 }
 
-export async function getQuote(id: string): Promise<QuoteDetail | null> {
-  const q = await prisma.quote.findUnique({
-    where: { id },
+export async function getQuote(orgId: string, id: string): Promise<QuoteDetail | null> {
+  const q = await prisma.quote.findFirst({
+    where: { id, organizationId: orgId },
     include: {
       customer: { select: { id: true, name: true, phone: true } },
       vehicle: { select: { id: true, make: true, model: true, plate: true, year: true } },
@@ -98,16 +102,18 @@ export async function getQuote(id: string): Promise<QuoteDetail | null> {
   }
 }
 
-export async function generateQuoteNumber(): Promise<string> {
+export async function generateQuoteNumber(orgId: string): Promise<string> {
   const year = new Date().getFullYear()
   const last = await prisma.quote.findFirst({
-    where: { quoteNumber: { startsWith: `QT-${year}-` } },
+    where: { organizationId: orgId, quoteNumber: { startsWith: `QT-${year}-` } },
     orderBy: { quoteNumber: 'desc' },
   })
   const seq = last ? parseInt(last.quoteNumber.split('-')[2]) + 1 : 1
   return `QT-${year}-${String(seq).padStart(4, '0')}`
 }
 
-export async function getOpenQuotesCount(): Promise<number> {
-  return prisma.quote.count({ where: { status: { in: ['DRAFT', 'SENT'] } } })
+export async function getOpenQuotesCount(orgId: string): Promise<number> {
+  return prisma.quote.count({
+    where: { organizationId: orgId, status: { in: ['DRAFT', 'SENT'] } },
+  })
 }

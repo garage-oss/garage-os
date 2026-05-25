@@ -2,6 +2,7 @@
 
 import { revalidatePath } from 'next/cache'
 import { prisma } from '@/lib/prisma'
+import { requireOrg } from '@/lib/org'
 import { QuoteStatus } from '@prisma/client'
 import { generateQuoteNumber } from '@/lib/quotes'
 
@@ -10,6 +11,8 @@ export type ActionResult = { error: string } | { success: true; id: string }
 type LineItem = { description: string; quantity: number; unitPrice: number }
 
 export async function createQuote(formData: FormData): Promise<ActionResult> {
+  const { orgId } = await requireOrg()
+
   try {
     const customerId = formData.get('customerId') as string
     const vehicleId = (formData.get('vehicleId') as string) || null
@@ -22,20 +25,15 @@ export async function createQuote(formData: FormData): Promise<ActionResult> {
     if (!customerId) return { error: 'יש לבחור לקוח' }
 
     let items: LineItem[] = []
-    try {
-      items = JSON.parse(itemsJson || '[]')
-    } catch {
-      return { error: 'פריטי ההצעה אינם תקינים' }
-    }
+    try { items = JSON.parse(itemsJson || '[]') } catch { return { error: 'פריטי ההצעה אינם תקינים' } }
 
     const partsTotal = items.reduce((s, i) => s + i.quantity * i.unitPrice, 0)
-    const laborTotal = laborHours * laborRate
-    const totalPrice = partsTotal + laborTotal
-
-    const quoteNumber = await generateQuoteNumber()
+    const totalPrice = partsTotal + laborHours * laborRate
+    const quoteNumber = await generateQuoteNumber(orgId)
 
     const quote = await prisma.quote.create({
       data: {
+        organizationId: orgId,
         quoteNumber,
         status: 'DRAFT',
         laborHours,
@@ -65,6 +63,8 @@ export async function createQuote(formData: FormData): Promise<ActionResult> {
 }
 
 export async function updateQuote(id: string, formData: FormData): Promise<ActionResult> {
+  const { orgId } = await requireOrg()
+
   try {
     const laborHours = parseFloat(formData.get('laborHours') as string) || 0
     const laborRate = parseFloat(formData.get('laborRate') as string) || 150
@@ -74,11 +74,10 @@ export async function updateQuote(id: string, formData: FormData): Promise<Actio
     const vehicleId = (formData.get('vehicleId') as string) || null
 
     let items: LineItem[] = []
-    try {
-      items = JSON.parse(itemsJson || '[]')
-    } catch {
-      return { error: 'פריטי ההצעה אינם תקינים' }
-    }
+    try { items = JSON.parse(itemsJson || '[]') } catch { return { error: 'פריטי ההצעה אינם תקינים' } }
+
+    const existing = await prisma.quote.findFirst({ where: { id, organizationId: orgId } })
+    if (!existing) return { error: 'הצעה לא נמצאה' }
 
     const partsTotal = items.reduce((s, i) => s + i.quantity * i.unitPrice, 0)
     const totalPrice = partsTotal + laborHours * laborRate
@@ -88,19 +87,12 @@ export async function updateQuote(id: string, formData: FormData): Promise<Actio
       prisma.quote.update({
         where: { id },
         data: {
-          laborHours,
-          laborRate,
-          partsTotal,
-          totalPrice,
-          notes,
-          vehicleId,
+          laborHours, laborRate, partsTotal, totalPrice, notes, vehicleId,
           validUntil: validUntilStr ? new Date(validUntilStr) : null,
           items: {
             create: items.map((i) => ({
-              description: i.description,
-              quantity: i.quantity,
-              unitPrice: i.unitPrice,
-              total: i.quantity * i.unitPrice,
+              description: i.description, quantity: i.quantity,
+              unitPrice: i.unitPrice, total: i.quantity * i.unitPrice,
             })),
           },
         },
@@ -122,8 +114,9 @@ export async function updateQuoteStatus(id: string, status: QuoteStatus): Promis
 }
 
 export async function deleteQuote(id: string): Promise<{ error?: string }> {
+  const { orgId } = await requireOrg()
   try {
-    await prisma.quote.delete({ where: { id } })
+    await prisma.quote.delete({ where: { id, organizationId: orgId } })
     revalidatePath('/dashboard/quotes')
     return {}
   } catch {

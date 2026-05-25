@@ -2,6 +2,7 @@ import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { ChevronRight, FileText, User, Car, Pencil } from 'lucide-react'
 import { getQuote } from '@/lib/quotes'
+import { requireOrg } from '@/lib/org'
 import { QuoteStatusBadge } from '@/components/quotes/QuoteStatusBadge'
 import { QuoteStatusActions } from '@/components/quotes/QuoteStatusActions'
 import { DeleteButton } from '@/components/ui/DeleteButton'
@@ -14,7 +15,8 @@ interface Props { params: { id: string } }
 export const dynamic = 'force-dynamic'
 
 export default async function QuoteDetailPage({ params }: Props) {
-  const quote = await getQuote(params.id)
+  const { orgId } = await requireOrg()
+  const quote = await getQuote(orgId, params.id)
   if (!quote) notFound()
 
   return (

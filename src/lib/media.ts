@@ -29,32 +29,44 @@ export function formatFileSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
-export async function getWorkOrderMedia(workOrderId: string): Promise<MediaFileData[]> {
+export async function getWorkOrderMedia(orgId: string, workOrderId: string): Promise<MediaFileData[]> {
   return prisma.mediaFile.findMany({
-    where: { workOrderId },
+    where: { workOrderId, workOrder: { organizationId: orgId } },
     orderBy: { createdAt: 'desc' },
   })
 }
 
-export async function getVehicleMedia(vehicleId: string): Promise<MediaFileData[]> {
+export async function getVehicleMedia(orgId: string, vehicleId: string): Promise<MediaFileData[]> {
   return prisma.mediaFile.findMany({
-    where: { vehicleId },
+    where: { vehicleId, vehicle: { organizationId: orgId } },
     orderBy: { createdAt: 'desc' },
   })
 }
 
-export async function getQuoteMedia(quoteId: string): Promise<MediaFileData[]> {
+export async function getQuoteMedia(orgId: string, quoteId: string): Promise<MediaFileData[]> {
   return prisma.mediaFile.findMany({
-    where: { quoteId },
+    where: { quoteId, quote: { organizationId: orgId } },
     orderBy: { createdAt: 'desc' },
   })
 }
 
-export async function getRecentUploads(take = 8): Promise<(MediaFileData & {
-  workOrder: { workOrderNumber: string } | null
-  vehicle: { plate: string; make: string; model: string } | null
-})[]> {
+export async function getRecentUploads(
+  orgId: string,
+  take = 8
+): Promise<
+  (MediaFileData & {
+    workOrder: { workOrderNumber: string } | null
+    vehicle: { plate: string; make: string; model: string } | null
+  })[]
+> {
   return prisma.mediaFile.findMany({
+    where: {
+      OR: [
+        { workOrder: { organizationId: orgId } },
+        { vehicle: { organizationId: orgId } },
+        { quote: { organizationId: orgId } },
+      ],
+    },
     take,
     orderBy: { createdAt: 'desc' },
     include: {

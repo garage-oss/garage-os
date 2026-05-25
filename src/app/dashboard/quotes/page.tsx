@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { getQuotes } from '@/lib/quotes'
+import { requireOrg } from '@/lib/org'
 import { QuoteStatusBadge } from '@/components/quotes/QuoteStatusBadge'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import { QuoteStatus } from '@prisma/client'
@@ -18,7 +19,8 @@ const STATUS_TABS: { label: string; value: string }[] = [
 ]
 
 export default async function QuotesPage({ searchParams }: PageProps) {
-  const quotes = await getQuotes({
+  const { orgId } = await requireOrg()
+  const quotes = await getQuotes(orgId, {
     status: searchParams.status as QuoteStatus | undefined,
     search: searchParams.q,
   })

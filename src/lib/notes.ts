@@ -10,9 +10,9 @@ export type NoteData = {
   createdAt: Date
 }
 
-export async function getWorkOrderNotes(workOrderId: string): Promise<NoteData[]> {
+export async function getWorkOrderNotes(orgId: string, workOrderId: string): Promise<NoteData[]> {
   return prisma.technicianNote.findMany({
-    where: { workOrderId },
+    where: { workOrderId, workOrder: { organizationId: orgId } },
     orderBy: { createdAt: 'desc' },
   })
 }

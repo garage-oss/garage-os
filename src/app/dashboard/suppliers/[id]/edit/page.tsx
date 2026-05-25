@@ -2,12 +2,14 @@ import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { ChevronRight } from 'lucide-react'
 import { prisma } from '@/lib/prisma'
+import { requireOrg } from '@/lib/org'
 import { SupplierForm } from '@/components/suppliers/SupplierForm'
 
 interface Props { params: { id: string } }
 
 export default async function EditSupplierPage({ params }: Props) {
-  const supplier = await prisma.supplier.findUnique({ where: { id: params.id } })
+  const { orgId } = await requireOrg()
+  const supplier = await prisma.supplier.findFirst({ where: { id: params.id, organizationId: orgId } })
   if (!supplier) notFound()
 
   return (

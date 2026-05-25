@@ -1,14 +1,16 @@
 import Link from 'next/link'
 import { ChevronRight } from 'lucide-react'
 import { prisma } from '@/lib/prisma'
+import { requireOrg } from '@/lib/org'
 import { QuoteForm } from '@/components/quotes/QuoteForm'
 
 interface Props { searchParams: { customerId?: string } }
 
 export default async function NewQuotePage({ searchParams }: Props) {
+  const { orgId } = await requireOrg()
   const [customers, vehicles] = await Promise.all([
-    prisma.customer.findMany({ orderBy: { name: 'asc' }, select: { id: true, name: true, phone: true } }),
-    prisma.vehicle.findMany({ orderBy: { make: 'asc' }, select: { id: true, make: true, model: true, plate: true, customerId: true } }),
+    prisma.customer.findMany({ where: { organizationId: orgId }, orderBy: { name: 'asc' }, select: { id: true, name: true, phone: true } }),
+    prisma.vehicle.findMany({ where: { organizationId: orgId }, orderBy: { make: 'asc' }, select: { id: true, make: true, model: true, plate: true, customerId: true } }),
   ])
 
   return (

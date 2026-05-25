@@ -7,10 +7,25 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// ─── Enums ────────────────────────────────────────────────────────────────────
+
 enum Role {
   ADMIN
   MECHANIC
   RECEPTIONIST
+}
+
+enum PlanType {
+  FREE
+  PRO
+  ENTERPRISE
+}
+
+enum MemberRole {
+  OWNER
+  ADMIN
+  TECHNICIAN
+  VIEWER
 }
 
 enum WorkOrderStatus {
@@ -67,79 +82,156 @@ enum DiagnosticUrgency {
   CRITICAL
 }
 
-model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  password  String
-  name      String
-  role      Role     @default(MECHANIC)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+// ─── Org / Auth ───────────────────────────────────────────────────────────────
+
+model Organization {
+  id          String    @id @default(cuid())
+  name        String
+  slug        String    @unique
+  logoUrl     String?
+  phone       String?
+  address     String?
+  city        String?
+  country     String    @default("IL")
+  timezone    String    @default("Asia/Jerusalem")
+  plan        PlanType  @default(FREE)
+  planExpiry  DateTime?
+  trialEndsAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  members            Membership[]
+  invitations        Invitation[]
+  customers          Customer[]
+  vehicles           Vehicle[]
+  workOrders         WorkOrder[]
+  parts              Part[]
+  suppliers          Supplier[]
+  quotes             Quote[]
+  diagnosticSessions DiagnosticSession[]
+  invoices           Invoice[]
 }
 
+model Membership {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role           MemberRole   @default(TECHNICIAN)
+  createdAt      DateTime     @default(now())
+
+  @@unique([organizationId, userId])
+  @@index([userId])
+}
+
+model Invitation {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  email          String
+  role           MemberRole   @default(TECHNICIAN)
+  token          String       @unique @default(cuid())
+  expiresAt      DateTime
+  acceptedAt     DateTime?
+  invitedBy      String?
+  createdAt      DateTime     @default(now())
+
+  @@index([organizationId])
+}
+
+model User {
+  id          String       @id @default(cuid())
+  email       String       @unique
+  password    String
+  name        String
+  role        Role         @default(MECHANIC)
+  memberships Membership[]
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+}
+
+// ─── Customers / Vehicles ─────────────────────────────────────────────────────
+
 model Customer {
-  id         String      @id @default(cuid())
-  name       String
-  phone      String
-  email      String?
-  address    String?
-  notes      String?
-  vehicles   Vehicle[]
-  workOrders WorkOrder[]
-  invoices   Invoice[]
-  quotes     Quote[]
-  createdAt  DateTime    @default(now())
-  updatedAt  DateTime    @updatedAt
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name           String
+  phone          String
+  email          String?
+  address        String?
+  notes          String?
+  vehicles       Vehicle[]
+  workOrders     WorkOrder[]
+  invoices       Invoice[]
+  quotes         Quote[]
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@index([organizationId])
 }
 
 model Vehicle {
-  id                  String              @id @default(cuid())
-  plate               String              @unique
-  make                String
-  model               String
-  year                Int
-  color               String?
-  vin                 String?
-  engine              String?
-  fuelType            FuelType?
-  transmission        Transmission?
-  mileage             Int?
-  notes               String?
-  customerId          String
-  customer            Customer            @relation(fields: [customerId], references: [id])
-  workOrders          WorkOrder[]
-  quotes              Quote[]
-  media               MediaFile[]
-  diagnosticSessions  DiagnosticSession[]
-  createdAt           DateTime            @default(now())
-  updatedAt           DateTime            @updatedAt
+  id                 String              @id @default(cuid())
+  organizationId     String
+  organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  plate              String
+  make               String
+  model              String
+  year               Int
+  color              String?
+  vin                String?
+  engine             String?
+  fuelType           FuelType?
+  transmission       Transmission?
+  mileage            Int?
+  notes              String?
+  customerId         String
+  customer           Customer            @relation(fields: [customerId], references: [id])
+  workOrders         WorkOrder[]
+  quotes             Quote[]
+  media              MediaFile[]
+  diagnosticSessions DiagnosticSession[]
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+
+  @@unique([plate, organizationId])
+  @@index([organizationId])
 }
 
+// ─── Work Orders ──────────────────────────────────────────────────────────────
+
 model WorkOrder {
-  id                  String              @id @default(cuid())
-  workOrderNumber     String              @unique
-  status              WorkOrderStatus     @default(PENDING)
-  complaint           String?
-  diagnosis           String?
-  laborHours          Decimal             @default(0) @db.Decimal(8, 2)
-  laborRate           Decimal             @default(150) @db.Decimal(10, 2)
-  partsTotal          Decimal             @default(0) @db.Decimal(10, 2)
-  totalPrice          Decimal             @default(0) @db.Decimal(10, 2)
-  assignedTechnician  String?
-  mileage             Int?
-  notes               String?
-  customerId          String
-  customer            Customer            @relation(fields: [customerId], references: [id])
-  vehicleId           String
-  vehicle             Vehicle             @relation(fields: [vehicleId], references: [id])
-  items               WorkOrderItem[]
-  invoice             Invoice?
-  quote               Quote?
-  techNotes           TechnicianNote[]
-  media               MediaFile[]
-  diagnosticSessions  DiagnosticSession[]
-  createdAt           DateTime            @default(now())
-  updatedAt           DateTime            @updatedAt
+  id                 String              @id @default(cuid())
+  organizationId     String
+  organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  workOrderNumber    String
+  status             WorkOrderStatus     @default(PENDING)
+  complaint          String?
+  diagnosis          String?
+  laborHours         Decimal             @default(0) @db.Decimal(8, 2)
+  laborRate          Decimal             @default(150) @db.Decimal(10, 2)
+  partsTotal         Decimal             @default(0) @db.Decimal(10, 2)
+  totalPrice         Decimal             @default(0) @db.Decimal(10, 2)
+  assignedTechnician String?
+  mileage            Int?
+  notes              String?
+  customerId         String
+  customer           Customer            @relation(fields: [customerId], references: [id])
+  vehicleId          String
+  vehicle            Vehicle             @relation(fields: [vehicleId], references: [id])
+  items              WorkOrderItem[]
+  invoice            Invoice?
+  quote              Quote?
+  techNotes          TechnicianNote[]
+  media              MediaFile[]
+  diagnosticSessions DiagnosticSession[]
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+
+  @@unique([workOrderNumber, organizationId])
+  @@index([organizationId])
 }
 
 model WorkOrderItem {
@@ -153,22 +245,30 @@ model WorkOrderItem {
   part        Part?     @relation(fields: [partId], references: [id])
 }
 
+// ─── Inventory ────────────────────────────────────────────────────────────────
+
 model Supplier {
-  id          String   @id @default(cuid())
-  name        String
-  contactName String?
-  phone       String?
-  email       String?
-  address     String?
-  notes       String?
-  parts       Part[]
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name           String
+  contactName    String?
+  phone          String?
+  email          String?
+  address        String?
+  notes          String?
+  parts          Part[]
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@index([organizationId])
 }
 
 model Part {
   id             String          @id @default(cuid())
-  sku            String          @unique
+  organizationId String
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  sku            String
   name           String
   category       String?
   manufacturer   String?
@@ -184,6 +284,9 @@ model Part {
   stockMovements StockMovement[]
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
+
+  @@unique([sku, organizationId])
+  @@index([organizationId])
 }
 
 model StockMovement {
@@ -196,26 +299,33 @@ model StockMovement {
   createdAt DateTime     @default(now())
 }
 
+// ─── Quotes ───────────────────────────────────────────────────────────────────
+
 model Quote {
-  id          String      @id @default(cuid())
-  quoteNumber String      @unique
-  status      QuoteStatus @default(DRAFT)
-  laborHours  Decimal     @default(0) @db.Decimal(8, 2)
-  laborRate   Decimal     @default(150) @db.Decimal(10, 2)
-  partsTotal  Decimal     @default(0) @db.Decimal(10, 2)
-  totalPrice  Decimal     @default(0) @db.Decimal(10, 2)
-  notes       String?
-  validUntil  DateTime?
-  customerId  String
-  customer    Customer    @relation(fields: [customerId], references: [id])
-  vehicleId   String?
-  vehicle     Vehicle?    @relation(fields: [vehicleId], references: [id])
-  workOrderId String?     @unique
-  workOrder   WorkOrder?  @relation(fields: [workOrderId], references: [id])
-  items       QuoteItem[]
-  media       MediaFile[]
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
+  id             String      @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  quoteNumber    String
+  status         QuoteStatus @default(DRAFT)
+  laborHours     Decimal     @default(0) @db.Decimal(8, 2)
+  laborRate      Decimal     @default(150) @db.Decimal(10, 2)
+  partsTotal     Decimal     @default(0) @db.Decimal(10, 2)
+  totalPrice     Decimal     @default(0) @db.Decimal(10, 2)
+  notes          String?
+  validUntil     DateTime?
+  customerId     String
+  customer       Customer    @relation(fields: [customerId], references: [id])
+  vehicleId      String?
+  vehicle        Vehicle?    @relation(fields: [vehicleId], references: [id])
+  workOrderId    String?     @unique
+  workOrder      WorkOrder?  @relation(fields: [workOrderId], references: [id])
+  items          QuoteItem[]
+  media          MediaFile[]
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  @@unique([quoteNumber, organizationId])
+  @@index([organizationId])
 }
 
 model QuoteItem {
@@ -227,6 +337,8 @@ model QuoteItem {
   quoteId     String
   quote       Quote   @relation(fields: [quoteId], references: [id], onDelete: Cascade)
 }
+
+// ─── Media / Notes / Diagnostics ─────────────────────────────────────────────
 
 model MediaFile {
   id           String     @id @default(cuid())
@@ -256,31 +368,42 @@ model TechnicianNote {
 }
 
 model DiagnosticSession {
-  id          String             @id @default(cuid())
-  complaint   String
-  obdCodes    String?
-  symptoms    String?
-  aiResponse  String?
-  urgency     DiagnosticUrgency  @default(MEDIUM)
-  vehicleId   String?
-  vehicle     Vehicle?           @relation(fields: [vehicleId], references: [id])
-  workOrderId String?
-  workOrder   WorkOrder?         @relation(fields: [workOrderId], references: [id])
-  createdAt   DateTime           @default(now())
+  id             String            @id @default(cuid())
+  organizationId String
+  organization   Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  complaint      String
+  obdCodes       String?
+  symptoms       String?
+  aiResponse     String?
+  urgency        DiagnosticUrgency @default(MEDIUM)
+  vehicleId      String?
+  vehicle        Vehicle?          @relation(fields: [vehicleId], references: [id])
+  workOrderId    String?
+  workOrder      WorkOrder?        @relation(fields: [workOrderId], references: [id])
+  createdAt      DateTime          @default(now())
+
+  @@index([organizationId])
 }
 
+// ─── Invoices ─────────────────────────────────────────────────────────────────
+
 model Invoice {
-  id          String        @id @default(cuid())
-  number      String        @unique
-  status      InvoiceStatus @default(DRAFT)
-  subtotal    Decimal       @db.Decimal(10, 2)
-  tax         Decimal       @default(0) @db.Decimal(10, 2)
-  total       Decimal       @db.Decimal(10, 2)
-  notes       String?
-  customerId  String
-  customer    Customer      @relation(fields: [customerId], references: [id])
-  workOrderId String?       @unique
-  workOrder   WorkOrder?    @relation(fields: [workOrderId], references: [id])
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
+  id             String        @id @default(cuid())
+  organizationId String
+  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  number         String
+  status         InvoiceStatus @default(DRAFT)
+  subtotal       Decimal       @db.Decimal(10, 2)
+  tax            Decimal       @default(0) @db.Decimal(10, 2)
+  total          Decimal       @db.Decimal(10, 2)
+  notes          String?
+  customerId     String
+  customer       Customer      @relation(fields: [customerId], references: [id])
+  workOrderId    String?       @unique
+  workOrder      WorkOrder?    @relation(fields: [workOrderId], references: [id])
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  @@unique([number, organizationId])
+  @@index([organizationId])
 }

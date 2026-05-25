@@ -28,9 +28,13 @@ export type PartDetail = PartSummary & {
   _count: { items: number }
 }
 
-export async function getParts(filters?: { search?: string; category?: string; lowStock?: boolean }) {
+export async function getParts(
+  orgId: string,
+  filters?: { search?: string; category?: string; lowStock?: boolean }
+) {
   const parts = await prisma.part.findMany({
     where: {
+      organizationId: orgId,
       AND: [
         filters?.search
           ? {
@@ -66,9 +70,9 @@ export async function getParts(filters?: { search?: string; category?: string; l
     .filter((p) => (filters?.lowStock ? p.isLowStock : true))
 }
 
-export async function getPart(id: string): Promise<PartDetail | null> {
-  const p = await prisma.part.findUnique({
-    where: { id },
+export async function getPart(orgId: string, id: string): Promise<PartDetail | null> {
+  const p = await prisma.part.findFirst({
+    where: { id, organizationId: orgId },
     include: {
       supplier: { select: { id: true, name: true } },
       stockMovements: { orderBy: { createdAt: 'desc' }, take: 50 },
@@ -95,8 +99,9 @@ export async function getPart(id: string): Promise<PartDetail | null> {
   }
 }
 
-export async function getLowStockParts() {
+export async function getLowStockParts(orgId: string) {
   const parts = await prisma.part.findMany({
+    where: { organizationId: orgId },
     include: { supplier: { select: { id: true, name: true } } },
     orderBy: { quantity: 'asc' },
   })
@@ -114,14 +119,21 @@ export async function getLowStockParts() {
     }))
 }
 
-export async function getInventoryValue() {
-  const parts = await prisma.part.findMany({ select: { quantity: true, costPrice: true, salePrice: true } })
+export async function getInventoryValue(orgId: string) {
+  const parts = await prisma.part.findMany({
+    where: { organizationId: orgId },
+    select: { quantity: true, costPrice: true, salePrice: true },
+  })
   const costValue = parts.reduce((s, p) => s + p.quantity * toNum(p.costPrice), 0)
   const saleValue = parts.reduce((s, p) => s + p.quantity * toNum(p.salePrice), 0)
   return { costValue, saleValue, partsCount: parts.length }
 }
 
-export async function getPartCategories() {
-  const cats = await prisma.part.findMany({ select: { category: true }, distinct: ['category'] })
+export async function getPartCategories(orgId: string) {
+  const cats = await prisma.part.findMany({
+    where: { organizationId: orgId },
+    select: { category: true },
+    distinct: ['category'],
+  })
   return cats.map((c) => c.category).filter(Boolean) as string[]
 }

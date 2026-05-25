@@ -2,6 +2,7 @@ import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { ChevronRight, Truck, Phone, Mail, MapPin, Pencil, Package } from 'lucide-react'
 import { getSupplier } from '@/lib/suppliers'
+import { requireOrg } from '@/lib/org'
 import { LowStockBadge } from '@/components/parts/LowStockBadge'
 import { DeleteButton } from '@/components/ui/DeleteButton'
 import { deleteSupplier } from '@/app/actions/suppliers'
@@ -12,7 +13,8 @@ interface Props { params: { id: string } }
 export const dynamic = 'force-dynamic'
 
 export default async function SupplierProfilePage({ params }: Props) {
-  const supplier = await getSupplier(params.id)
+  const { orgId } = await requireOrg()
+  const supplier = await getSupplier(orgId, params.id)
   if (!supplier) notFound()
 
   return (

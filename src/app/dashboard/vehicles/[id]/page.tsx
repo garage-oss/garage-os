@@ -2,6 +2,7 @@ import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { ChevronRight, Car, User, Gauge, Fuel, Settings2, Pencil } from 'lucide-react'
 import { getVehicle, FUEL_LABELS, TRANSMISSION_LABELS } from '@/lib/vehicles'
+import { requireOrg } from '@/lib/org'
 import { StatusBadge } from '@/components/work-orders/StatusBadge'
 import { DeleteButton } from '@/components/ui/DeleteButton'
 import { VehicleMediaSection } from '@/components/vehicles/VehicleMediaSection'
@@ -22,7 +23,8 @@ function Spec({ label, value }: { label: string; value: string | null | undefine
 }
 
 export default async function VehicleProfilePage({ params }: Props) {
-  const vehicle = await getVehicle(params.id)
+  const { orgId } = await requireOrg()
+  const vehicle = await getVehicle(orgId, params.id)
   if (!vehicle) notFound()
 
   const totalSpent = vehicle.workOrders.reduce((s, wo) => s + toNum(wo.totalPrice), 0)

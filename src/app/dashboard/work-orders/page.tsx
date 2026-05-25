@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { getWorkOrders } from '@/lib/work-orders'
+import { requireOrg } from '@/lib/org'
 import { WorkOrderStatus } from '@prisma/client'
 import { StatusBadge } from '@/components/work-orders/StatusBadge'
 import { WorkOrderFilters } from '@/components/work-orders/WorkOrderFilters'
@@ -16,7 +17,8 @@ export default async function WorkOrdersPage({ searchParams }: PageProps) {
   const status = searchParams.status as WorkOrderStatus | undefined
   const search = searchParams.q
 
-  const workOrders = await getWorkOrders({ status, search })
+  const { orgId } = await requireOrg()
+  const workOrders = await getWorkOrders(orgId, { status, search })
 
   return (
     <div>

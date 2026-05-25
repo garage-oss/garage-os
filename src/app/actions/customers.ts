@@ -1,12 +1,14 @@
 'use server'
 
 import { prisma } from '@/lib/prisma'
+import { requireOrg } from '@/lib/org'
 import { revalidatePath } from 'next/cache'
 
 export type ActionResult = { error: string } | { success: true; id: string }
 
-// ── Create ────────────────────────────────────────────────────
 export async function createCustomer(formData: FormData): Promise<ActionResult> {
+  const { orgId } = await requireOrg()
+
   const name = (formData.get('name') as string)?.trim()
   const phone = (formData.get('phone') as string)?.trim()
   const email = (formData.get('email') as string)?.trim() || null
@@ -18,7 +20,7 @@ export async function createCustomer(formData: FormData): Promise<ActionResult> 
 
   try {
     const customer = await prisma.customer.create({
-      data: { name, phone, email, address, notes },
+      data: { organizationId: orgId, name, phone, email, address, notes },
     })
     revalidatePath('/dashboard/customers')
     revalidatePath('/dashboard')
@@ -29,8 +31,9 @@ export async function createCustomer(formData: FormData): Promise<ActionResult> 
   }
 }
 
-// ── Update ────────────────────────────────────────────────────
 export async function updateCustomer(id: string, formData: FormData): Promise<ActionResult> {
+  const { orgId } = await requireOrg()
+
   const name = (formData.get('name') as string)?.trim()
   const phone = (formData.get('phone') as string)?.trim()
   const email = (formData.get('email') as string)?.trim() || null
@@ -42,7 +45,7 @@ export async function updateCustomer(id: string, formData: FormData): Promise<Ac
 
   try {
     await prisma.customer.update({
-      where: { id },
+      where: { id, organizationId: orgId },
       data: { name, phone, email, address, notes },
     })
     revalidatePath('/dashboard/customers')
@@ -54,10 +57,10 @@ export async function updateCustomer(id: string, formData: FormData): Promise<Ac
   }
 }
 
-// ── Delete ────────────────────────────────────────────────────
 export async function deleteCustomer(id: string): Promise<{ error?: string }> {
+  const { orgId } = await requireOrg()
   try {
-    await prisma.customer.delete({ where: { id } })
+    await prisma.customer.delete({ where: { id, organizationId: orgId } })
     revalidatePath('/dashboard/customers')
     revalidatePath('/dashboard')
     return {}

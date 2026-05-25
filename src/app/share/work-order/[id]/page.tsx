@@ -14,7 +14,7 @@ const STATUS_HE: Record<string, { label: string; color: string; bg: string; desc
 
 export default async function ShareWorkOrderPage({ params }: Props) {
   const wo = await prisma.workOrder.findUnique({
-    where: { workOrderNumber: params.id },
+    where: { id: params.id },
     include: { customer: true, vehicle: true },
   })
 

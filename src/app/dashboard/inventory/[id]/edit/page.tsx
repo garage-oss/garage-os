@@ -2,16 +2,18 @@ import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { ChevronRight } from 'lucide-react'
 import { prisma } from '@/lib/prisma'
+import { requireOrg } from '@/lib/org'
 import { PartForm } from '@/components/parts/PartForm'
 import { toNum } from '@/lib/utils'
 
 interface Props { params: { id: string } }
 
 export default async function EditPartPage({ params }: Props) {
-  const part = await prisma.part.findUnique({ where: { id: params.id } })
+  const { orgId } = await requireOrg()
+  const part = await prisma.part.findFirst({ where: { id: params.id, organizationId: orgId } })
   if (!part) notFound()
 
-  const suppliers = await prisma.supplier.findMany({ orderBy: { name: 'asc' }, select: { id: true, name: true } })
+  const suppliers = await prisma.supplier.findMany({ where: { organizationId: orgId }, orderBy: { name: 'asc' }, select: { id: true, name: true } })
 
   const partData = {
     id: part.id,

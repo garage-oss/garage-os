@@ -2,16 +2,18 @@ import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { ChevronRight } from 'lucide-react'
 import { getQuote } from '@/lib/quotes'
+import { requireOrg } from '@/lib/org'
 import { prisma } from '@/lib/prisma'
 import { QuoteForm } from '@/components/quotes/QuoteForm'
 
 interface Props { params: { id: string } }
 
 export default async function EditQuotePage({ params }: Props) {
+  const { orgId } = await requireOrg()
   const [quote, customers, vehicles] = await Promise.all([
-    getQuote(params.id),
-    prisma.customer.findMany({ orderBy: { name: 'asc' }, select: { id: true, name: true, phone: true } }),
-    prisma.vehicle.findMany({ orderBy: { make: 'asc' }, select: { id: true, make: true, model: true, plate: true, customerId: true } }),
+    getQuote(orgId, params.id),
+    prisma.customer.findMany({ where: { organizationId: orgId }, orderBy: { name: 'asc' }, select: { id: true, name: true, phone: true } }),
+    prisma.vehicle.findMany({ where: { organizationId: orgId }, orderBy: { make: 'asc' }, select: { id: true, make: true, model: true, plate: true, customerId: true } }),
   ])
 
   if (!quote) notFound()

@@ -1,12 +1,14 @@
 import Link from 'next/link'
 import { prisma } from '@/lib/prisma'
+import { requireOrg } from '@/lib/org'
 import { WorkOrderForm } from '@/components/work-orders/WorkOrderForm'
 import { ChevronRight } from 'lucide-react'
 
 export default async function NewWorkOrderPage() {
+  const { orgId } = await requireOrg()
   const [customers, vehicles] = await Promise.all([
-    prisma.customer.findMany({ orderBy: { name: 'asc' } }),
-    prisma.vehicle.findMany({ orderBy: [{ make: 'asc' }, { model: 'asc' }] }),
+    prisma.customer.findMany({ where: { organizationId: orgId }, orderBy: { name: 'asc' } }),
+    prisma.vehicle.findMany({ where: { organizationId: orgId }, orderBy: [{ make: 'asc' }, { model: 'asc' }] }),
   ])
 
   return (

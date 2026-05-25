@@ -2,12 +2,14 @@ import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { ChevronRight } from 'lucide-react'
 import { prisma } from '@/lib/prisma'
+import { requireOrg } from '@/lib/org'
 import { CustomerForm } from '@/components/customers/CustomerForm'
 
 interface Props { params: { id: string } }
 
 export default async function EditCustomerPage({ params }: Props) {
-  const customer = await prisma.customer.findUnique({ where: { id: params.id } })
+  const { orgId } = await requireOrg()
+  const customer = await prisma.customer.findFirst({ where: { id: params.id, organizationId: orgId } })
   if (!customer) notFound()
 
   return (

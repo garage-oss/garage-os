@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { getDiagnosticSessions } from '@/lib/diagnostics'
+import { requireOrg } from '@/lib/org'
 import { Brain, Plus, Car, AlertTriangle, CheckCircle2, Clock } from 'lucide-react'
 import { formatDate } from '@/lib/utils'
 
@@ -13,7 +14,8 @@ const URGENCY_CONFIG = {
 }
 
 export default async function DiagnosticsPage() {
-  const sessions = await getDiagnosticSessions()
+  const { orgId } = await requireOrg()
+  const sessions = await getDiagnosticSessions(orgId)
 
   return (
     <div>

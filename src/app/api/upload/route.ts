@@ -3,6 +3,7 @@ import { writeFile, mkdir } from 'fs/promises'
 import { join } from 'path'
 import { randomUUID } from 'crypto'
 import { prisma } from '@/lib/prisma'
+import { getOrgContext } from '@/lib/org'
 
 const ALLOWED_TYPES = [
   'image/jpeg', 'image/png', 'image/gif', 'image/webp',
@@ -15,6 +16,9 @@ const MAX_SIZE = 20 * 1024 * 1024 // 20 MB
 
 export async function POST(req: NextRequest) {
   try {
+    const org = await getOrgContext()
+    if (!org) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
     const formData = await req.formData()
     const file = formData.get('file') as File | null
     const entityType = formData.get('entityType') as string // 'workOrder' | 'vehicle' | 'quote'

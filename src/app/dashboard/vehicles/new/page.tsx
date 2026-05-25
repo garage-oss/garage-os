@@ -1,12 +1,14 @@
 import Link from 'next/link'
 import { ChevronRight } from 'lucide-react'
 import { prisma } from '@/lib/prisma'
+import { requireOrg } from '@/lib/org'
 import { VehicleForm } from '@/components/vehicles/VehicleForm'
 
 interface Props { searchParams: { customerId?: string } }
 
 export default async function NewVehiclePage({ searchParams }: Props) {
-  const customers = await prisma.customer.findMany({ orderBy: { name: 'asc' } })
+  const { orgId } = await requireOrg()
+  const customers = await prisma.customer.findMany({ where: { organizationId: orgId }, orderBy: { name: 'asc' } })
 
   return (
     <div>

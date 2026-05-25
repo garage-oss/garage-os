@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { getSuppliers } from '@/lib/suppliers'
+import { requireOrg } from '@/lib/org'
 import { Package, Phone, Mail, Plus, Truck } from 'lucide-react'
 
 export const dynamic = 'force-dynamic'
@@ -7,7 +8,8 @@ export const dynamic = 'force-dynamic'
 interface PageProps { searchParams: { q?: string } }
 
 export default async function SuppliersPage({ searchParams }: PageProps) {
-  const suppliers = await getSuppliers(searchParams.q)
+  const { orgId } = await requireOrg()
+  const suppliers = await getSuppliers(orgId, searchParams.q)
 
   return (
     <div>

@@ -19,17 +19,23 @@ export type CustomerProfile = Prisma.CustomerGetPayload<{
   }
 }>
 
-export async function getCustomers(search?: string): Promise<CustomerSummary[]> {
-  const where: Prisma.CustomerWhereInput = search
-    ? {
+export async function getCustomers(orgId: string, search?: string): Promise<CustomerSummary[]> {
+  const where: Prisma.CustomerWhereInput = { organizationId: orgId }
+
+  if (search) {
+    where.AND = [
+      { organizationId: orgId },
+      {
         OR: [
           { name: { contains: search, mode: 'insensitive' } },
           { phone: { contains: search } },
           { email: { contains: search, mode: 'insensitive' } },
           { address: { contains: search, mode: 'insensitive' } },
         ],
-      }
-    : {}
+      },
+    ]
+    delete where.organizationId
+  }
 
   return prisma.customer.findMany({
     where,
@@ -38,9 +44,9 @@ export async function getCustomers(search?: string): Promise<CustomerSummary[]> 
   })
 }
 
-export async function getCustomer(id: string): Promise<CustomerProfile | null> {
-  return prisma.customer.findUnique({
-    where: { id },
+export async function getCustomer(orgId: string, id: string): Promise<CustomerProfile | null> {
+  return prisma.customer.findFirst({
+    where: { id, organizationId: orgId },
     include: {
       vehicles: {
         include: { _count: { select: { workOrders: true } } },
@@ -59,8 +65,9 @@ export function calcTotalSpent(workOrders: { totalPrice: unknown }[]): number {
   return workOrders.reduce((sum, wo) => sum + toNum(wo.totalPrice), 0)
 }
 
-export async function getRecentCustomers(take = 5) {
+export async function getRecentCustomers(orgId: string, take = 5) {
   return prisma.customer.findMany({
+    where: { organizationId: orgId },
     take,
     include: { _count: { select: { vehicles: true, workOrders: true } } },
     orderBy: { createdAt: 'desc' },

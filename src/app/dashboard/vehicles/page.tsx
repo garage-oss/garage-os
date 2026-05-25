@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { getVehicles } from '@/lib/vehicles'
+import { requireOrg } from '@/lib/org'
 import { VehicleCard } from '@/components/vehicles/VehicleCard'
 import { VehicleFilters } from '@/components/vehicles/VehicleFilters'
 import { FuelType } from '@prisma/client'
@@ -10,7 +11,8 @@ interface PageProps { searchParams: { q?: string; fuel?: string; inService?: str
 export const dynamic = 'force-dynamic'
 
 export default async function VehiclesPage({ searchParams }: PageProps) {
-  const vehicles = await getVehicles({
+  const { orgId } = await requireOrg()
+  const vehicles = await getVehicles(orgId, {
     search: searchParams.q,
     fuelType: searchParams.fuel as FuelType | undefined,
     inService: searchParams.inService === 'true',

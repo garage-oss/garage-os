@@ -1,13 +1,15 @@
 'use server'
 
 import { prisma } from '@/lib/prisma'
+import { requireOrg } from '@/lib/org'
 import { revalidatePath } from 'next/cache'
 import { FuelType, Transmission } from '@prisma/client'
 
 export type ActionResult = { error: string } | { success: true; id: string }
 
-// ── Create ────────────────────────────────────────────────────
 export async function createVehicle(formData: FormData): Promise<ActionResult> {
+  const { orgId } = await requireOrg()
+
   const customerId = (formData.get('customerId') as string)?.trim()
   const plate = (formData.get('plate') as string)?.trim().toUpperCase()
   const make = (formData.get('make') as string)?.trim()
@@ -31,7 +33,7 @@ export async function createVehicle(formData: FormData): Promise<ActionResult> {
 
   try {
     const vehicle = await prisma.vehicle.create({
-      data: { customerId, plate, make, model, year, color, vin, engine, fuelType, transmission, mileage, notes },
+      data: { organizationId: orgId, customerId, plate, make, model, year, color, vin, engine, fuelType, transmission, mileage, notes },
     })
     revalidatePath('/dashboard/vehicles')
     revalidatePath(`/dashboard/customers/${customerId}`)
@@ -45,8 +47,9 @@ export async function createVehicle(formData: FormData): Promise<ActionResult> {
   }
 }
 
-// ── Update ────────────────────────────────────────────────────
 export async function updateVehicle(id: string, formData: FormData): Promise<ActionResult> {
+  const { orgId } = await requireOrg()
+
   const plate = (formData.get('plate') as string)?.trim().toUpperCase()
   const make = (formData.get('make') as string)?.trim()
   const model = (formData.get('model') as string)?.trim()
@@ -67,7 +70,7 @@ export async function updateVehicle(id: string, formData: FormData): Promise<Act
   if (!year || isNaN(year)) return { error: 'שנה היא שדה חובה' }
 
   try {
-    const vehicle = await prisma.vehicle.findUnique({ where: { id }, select: { customerId: true } })
+    const vehicle = await prisma.vehicle.findFirst({ where: { id, organizationId: orgId }, select: { customerId: true } })
     await prisma.vehicle.update({
       where: { id },
       data: { plate, make, model, year, color, vin, engine, fuelType, transmission, mileage, notes },
@@ -85,13 +88,14 @@ export async function updateVehicle(id: string, formData: FormData): Promise<Act
   }
 }
 
-// ── Delete ────────────────────────────────────────────────────
 export async function deleteVehicle(id: string): Promise<{ error?: string }> {
+  const { orgId } = await requireOrg()
   try {
-    const v = await prisma.vehicle.findUnique({ where: { id }, select: { customerId: true } })
+    const v = await prisma.vehicle.findFirst({ where: { id, organizationId: orgId }, select: { customerId: true } })
+    if (!v) return { error: 'רכב לא נמצא' }
     await prisma.vehicle.delete({ where: { id } })
     revalidatePath('/dashboard/vehicles')
-    if (v) revalidatePath(`/dashboard/customers/${v.customerId}`)
+    revalidatePath(`/dashboard/customers/${v.customerId}`)
     return {}
   } catch (e) {
     console.error(e)

@@ -2,11 +2,14 @@
 
 import { revalidatePath } from 'next/cache'
 import { prisma } from '@/lib/prisma'
+import { requireOrg } from '@/lib/org'
 import { MovementType } from '@prisma/client'
 
 export type ActionResult = { error: string } | { success: true; id: string }
 
 export async function createPart(formData: FormData): Promise<ActionResult> {
+  const { orgId } = await requireOrg()
+
   try {
     const sku = (formData.get('sku') as string).trim()
     const name = (formData.get('name') as string).trim()
@@ -20,6 +23,7 @@ export async function createPart(formData: FormData): Promise<ActionResult> {
 
     const part = await prisma.part.create({
       data: {
+        organizationId: orgId,
         sku,
         name,
         category: (formData.get('category') as string)?.trim() || null,
@@ -51,6 +55,8 @@ export async function createPart(formData: FormData): Promise<ActionResult> {
 }
 
 export async function updatePart(id: string, formData: FormData): Promise<ActionResult> {
+  const { orgId } = await requireOrg()
+
   try {
     const sku = (formData.get('sku') as string).trim()
     const name = (formData.get('name') as string).trim()
@@ -59,6 +65,9 @@ export async function updatePart(id: string, formData: FormData): Promise<Action
 
     if (!sku || !name) return { error: 'מק"ט ושם חובה' }
     if (isNaN(costPrice) || isNaN(salePrice)) return { error: 'מחיר לא תקין' }
+
+    const existing = await prisma.part.findFirst({ where: { id, organizationId: orgId } })
+    if (!existing) return { error: 'חלק לא נמצא' }
 
     await prisma.part.update({
       where: { id },
@@ -88,8 +97,9 @@ export async function updatePart(id: string, formData: FormData): Promise<Action
 }
 
 export async function deletePart(id: string): Promise<{ error?: string }> {
+  const { orgId } = await requireOrg()
   try {
-    await prisma.part.delete({ where: { id } })
+    await prisma.part.delete({ where: { id, organizationId: orgId } })
     revalidatePath('/dashboard/inventory')
     return {}
   } catch {
@@ -103,8 +113,9 @@ export async function adjustStock(
   quantity: number,
   reason: string
 ): Promise<ActionResult> {
+  const { orgId } = await requireOrg()
   try {
-    const part = await prisma.part.findUnique({ where: { id: partId } })
+    const part = await prisma.part.findFirst({ where: { id: partId, organizationId: orgId } })
     if (!part) return { error: 'חלק לא נמצא' }
 
     const delta = type === 'OUT' ? -Math.abs(quantity) : type === 'IN' ? Math.abs(quantity) : quantity

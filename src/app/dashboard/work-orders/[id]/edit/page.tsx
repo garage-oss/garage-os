@@ -2,22 +2,24 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { ChevronRight } from 'lucide-react'
 import { prisma } from '@/lib/prisma'
+import { requireOrg } from '@/lib/org'
 import { WorkOrderForm } from '@/components/work-orders/WorkOrderForm'
 import { toNum } from '@/lib/utils'
 
 interface Props { params: { id: string } }
 
 export default async function EditWorkOrderPage({ params }: Props) {
-  const wo = await prisma.workOrder.findUnique({
-    where: { id: params.id },
+  const { orgId } = await requireOrg()
+  const wo = await prisma.workOrder.findFirst({
+    where: { id: params.id, organizationId: orgId },
     include: { customer: true, vehicle: true },
   })
 
   if (!wo) notFound()
 
   const [customers, vehicles] = await Promise.all([
-    prisma.customer.findMany({ orderBy: { name: 'asc' } }),
-    prisma.vehicle.findMany({ orderBy: [{ make: 'asc' }, { model: 'asc' }] }),
+    prisma.customer.findMany({ where: { organizationId: orgId }, orderBy: { name: 'asc' } }),
+    prisma.vehicle.findMany({ where: { organizationId: orgId }, orderBy: [{ make: 'asc' }, { model: 'asc' }] }),
   ])
 
   const workOrderData = {

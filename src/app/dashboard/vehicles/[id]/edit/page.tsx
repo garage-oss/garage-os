@@ -2,16 +2,18 @@ import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { ChevronRight } from 'lucide-react'
 import { prisma } from '@/lib/prisma'
+import { requireOrg } from '@/lib/org'
 import { VehicleForm } from '@/components/vehicles/VehicleForm'
 import { toNum } from '@/lib/utils'
 
 interface Props { params: { id: string } }
 
 export default async function EditVehiclePage({ params }: Props) {
-  const vehicle = await prisma.vehicle.findUnique({ where: { id: params.id } })
+  const { orgId } = await requireOrg()
+  const vehicle = await prisma.vehicle.findFirst({ where: { id: params.id, organizationId: orgId } })
   if (!vehicle) notFound()
 
-  const customers = await prisma.customer.findMany({ orderBy: { name: 'asc' } })
+  const customers = await prisma.customer.findMany({ where: { organizationId: orgId }, orderBy: { name: 'asc' } })
 
   const vehicleData = {
     id: vehicle.id,

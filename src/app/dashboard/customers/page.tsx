@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { getCustomers } from '@/lib/customers'
+import { requireOrg } from '@/lib/org'
 import { CustomerFilters } from '@/components/customers/CustomerFilters'
 import { Plus, Eye, Pencil, Car, Wrench } from 'lucide-react'
 
@@ -20,7 +21,8 @@ const AVATAR_COLORS = [
 ]
 
 export default async function CustomersPage({ searchParams }: PageProps) {
-  const customers = await getCustomers(searchParams.q)
+  const { orgId } = await requireOrg()
+  const customers = await getCustomers(orgId, searchParams.q)
 
   return (
     <div>

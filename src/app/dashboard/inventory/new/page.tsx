@@ -1,10 +1,12 @@
 import Link from 'next/link'
 import { ChevronRight } from 'lucide-react'
 import { prisma } from '@/lib/prisma'
+import { requireOrg } from '@/lib/org'
 import { PartForm } from '@/components/parts/PartForm'
 
 export default async function NewPartPage() {
-  const suppliers = await prisma.supplier.findMany({ orderBy: { name: 'asc' }, select: { id: true, name: true } })
+  const { orgId } = await requireOrg()
+  const suppliers = await prisma.supplier.findMany({ where: { organizationId: orgId }, orderBy: { name: 'asc' }, select: { id: true, name: true } })
 
   return (
     <div>

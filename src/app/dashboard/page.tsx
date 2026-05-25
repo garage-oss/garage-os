@@ -6,6 +6,7 @@ import { getLowStockParts, getInventoryValue } from '@/lib/parts'
 import { getOpenQuotesCount, getQuotes } from '@/lib/quotes'
 import { getRecentUploads } from '@/lib/media'
 import { getDiagnosticSessions } from '@/lib/diagnostics'
+import { requireOrg } from '@/lib/org'
 import { StatusBadge } from '@/components/work-orders/StatusBadge'
 import { VehicleCard } from '@/components/vehicles/VehicleCard'
 import { LowStockBadge } from '@/components/parts/LowStockBadge'
@@ -17,6 +18,8 @@ import { formatFileSize, isImage, isAudio } from '@/lib/media'
 export const dynamic = 'force-dynamic'
 
 export default async function DashboardPage() {
+  const { orgId, orgName } = await requireOrg()
+
   const [
     { active, waitingParts, completedToday, pending, recentWorkOrders },
     recentCustomers,
@@ -28,15 +31,15 @@ export default async function DashboardPage() {
     recentUploads,
     diagnosticSessions,
   ] = await Promise.all([
-    getDashboardStats(),
-    getRecentCustomers(5),
-    getVehiclesInService(),
-    getLowStockParts(),
-    getInventoryValue(),
-    getOpenQuotesCount(),
-    getQuotes({ status: 'SENT' }),
-    getRecentUploads(6),
-    getDiagnosticSessions(),
+    getDashboardStats(orgId),
+    getRecentCustomers(orgId, 5),
+    getVehiclesInService(orgId),
+    getLowStockParts(orgId),
+    getInventoryValue(orgId),
+    getOpenQuotesCount(orgId),
+    getQuotes(orgId, { status: 'SENT' }),
+    getRecentUploads(orgId, 6),
+    getDiagnosticSessions(orgId),
   ])
 
   const stats = [
@@ -52,7 +55,7 @@ export default async function DashboardPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">לוח בקרה</h1>
-          <p className="text-sm text-[#8892a4] mt-0.5">ברוך הבא ל-GarageOS</p>
+          <p className="text-sm text-[#8892a4] mt-0.5">{orgName}</p>
         </div>
         <Link href="/dashboard/work-orders/new" className="flex items-center gap-2 bg-[#6366f1] hover:bg-[#4f46e5] text-white text-sm font-medium rounded-lg px-4 py-2.5 transition-colors">
           + פקודה חדשה

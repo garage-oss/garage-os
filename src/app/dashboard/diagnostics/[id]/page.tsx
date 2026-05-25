@@ -2,6 +2,7 @@ import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { ChevronRight, Brain, Car, Wrench, Plus } from 'lucide-react'
 import { getDiagnosticSession } from '@/lib/diagnostics'
+import { requireOrg } from '@/lib/org'
 import { DiagnosticResult } from '@/components/diagnostics/DiagnosticResult'
 import { formatDate } from '@/lib/utils'
 
@@ -14,7 +15,8 @@ const URGENCY_LABEL: Record<string, string> = {
 }
 
 export default async function DiagnosticSessionPage({ params }: Props) {
-  const session = await getDiagnosticSession(params.id)
+  const { orgId } = await requireOrg()
+  const session = await getDiagnosticSession(orgId, params.id)
   if (!session) notFound()
 
   return (

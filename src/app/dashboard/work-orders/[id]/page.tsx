@@ -306,6 +306,7 @@ export default function WorkOrderDetailPage({ params }: { params: { id: string }
       {tab === 'communication' && (
         <MessageComposer
           wo={{
+            id: wo.id,
             workOrderNumber: wo.workOrderNumber,
             status: wo.status,
             totalPrice: wo.totalPrice,

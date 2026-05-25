@@ -1,14 +1,16 @@
 'use server'
 
 import { prisma } from '@/lib/prisma'
+import { requireOrg } from '@/lib/org'
 import { generateWorkOrderNumber } from '@/lib/work-orders'
 import { revalidatePath } from 'next/cache'
 import { WorkOrderStatus } from '@prisma/client'
 
 export type ActionResult = { error: string } | { success: true; id: string }
 
-// ── Create ───────────────────────────────────────────────────
 export async function createWorkOrder(formData: FormData): Promise<ActionResult> {
+  const { orgId } = await requireOrg()
+
   const customerId = (formData.get('customerId') as string)?.trim()
   const vehicleId = (formData.get('vehicleId') as string)?.trim()
   const complaint = (formData.get('complaint') as string)?.trim()
@@ -25,11 +27,12 @@ export async function createWorkOrder(formData: FormData): Promise<ActionResult>
   if (!complaint) return { error: 'יש להזין תלונת לקוח' }
 
   try {
-    const workOrderNumber = await generateWorkOrderNumber()
+    const workOrderNumber = await generateWorkOrderNumber(orgId)
     const totalPrice = laborHours * laborRate
 
     const wo = await prisma.workOrder.create({
       data: {
+        organizationId: orgId,
         workOrderNumber,
         customerId,
         vehicleId,
@@ -54,8 +57,9 @@ export async function createWorkOrder(formData: FormData): Promise<ActionResult>
   }
 }
 
-// ── Update ───────────────────────────────────────────────────
 export async function updateWorkOrder(id: string, formData: FormData): Promise<ActionResult> {
+  const { orgId } = await requireOrg()
+
   const complaint = (formData.get('complaint') as string)?.trim()
   const diagnosis = (formData.get('diagnosis') as string)?.trim() || null
   const assignedTechnician = (formData.get('assignedTechnician') as string)?.trim() || null
@@ -68,11 +72,12 @@ export async function updateWorkOrder(id: string, formData: FormData): Promise<A
   if (!complaint) return { error: 'יש להזין תלונת לקוח' }
 
   try {
-    const existing = await prisma.workOrder.findUnique({
-      where: { id },
+    const existing = await prisma.workOrder.findFirst({
+      where: { id, organizationId: orgId },
       select: { partsTotal: true },
     })
-    const partsTotal = existing ? Number(existing.partsTotal) : 0
+    if (!existing) return { error: 'פקודת עבודה לא נמצאה' }
+    const partsTotal = Number(existing.partsTotal)
     const totalPrice = laborHours * laborRate + partsTotal
 
     await prisma.workOrder.update({
@@ -90,7 +95,6 @@ export async function updateWorkOrder(id: string, formData: FormData): Promise<A
   }
 }
 
-// ── Status ───────────────────────────────────────────────────
 export async function updateWorkOrderStatus(id: string, status: WorkOrderStatus): Promise<void> {
   await prisma.workOrder.update({ where: { id }, data: { status } })
   revalidatePath('/dashboard/work-orders')
@@ -98,10 +102,10 @@ export async function updateWorkOrderStatus(id: string, status: WorkOrderStatus)
   revalidatePath('/dashboard')
 }
 
-// ── Delete ───────────────────────────────────────────────────
 export async function deleteWorkOrder(id: string): Promise<{ error?: string }> {
+  const { orgId } = await requireOrg()
   try {
-    await prisma.workOrder.delete({ where: { id } })
+    await prisma.workOrder.delete({ where: { id, organizationId: orgId } })
     revalidatePath('/dashboard/work-orders')
     revalidatePath('/dashboard')
     return {}

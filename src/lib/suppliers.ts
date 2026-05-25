@@ -26,17 +26,20 @@ export type SupplierDetail = SupplierSummary & {
   }[]
 }
 
-export async function getSuppliers(search?: string): Promise<SupplierSummary[]> {
+export async function getSuppliers(orgId: string, search?: string): Promise<SupplierSummary[]> {
   const suppliers = await prisma.supplier.findMany({
-    where: search
-      ? {
-          OR: [
-            { name: { contains: search, mode: 'insensitive' } },
-            { contactName: { contains: search, mode: 'insensitive' } },
-            { phone: { contains: search, mode: 'insensitive' } },
-          ],
-        }
-      : undefined,
+    where: {
+      organizationId: orgId,
+      ...(search
+        ? {
+            OR: [
+              { name: { contains: search, mode: 'insensitive' } },
+              { contactName: { contains: search, mode: 'insensitive' } },
+              { phone: { contains: search, mode: 'insensitive' } },
+            ],
+          }
+        : {}),
+    },
     include: { _count: { select: { parts: true } } },
     orderBy: { name: 'asc' },
   })
@@ -51,9 +54,9 @@ export async function getSuppliers(search?: string): Promise<SupplierSummary[]> 
   }))
 }
 
-export async function getSupplier(id: string): Promise<SupplierDetail | null> {
-  const s = await prisma.supplier.findUnique({
-    where: { id },
+export async function getSupplier(orgId: string, id: string): Promise<SupplierDetail | null> {
+  const s = await prisma.supplier.findFirst({
+    where: { id, organizationId: orgId },
     include: {
       parts: { orderBy: { name: 'asc' } },
       _count: { select: { parts: true } },

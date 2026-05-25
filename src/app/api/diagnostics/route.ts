@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 import { prisma } from '@/lib/prisma'
 import { DiagnosticAIResponse } from '@/lib/diagnostics'
+import { getOrgContext } from '@/lib/org'
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
@@ -14,6 +15,9 @@ function urgencyToEnum(u: string): 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL' {
 
 export async function POST(req: NextRequest) {
   try {
+    const org = await getOrgContext()
+    if (!org) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
     const { complaint, obdCodes, symptoms, vehicleId, workOrderId, vehicleInfo } = await req.json()
 
     if (!complaint?.trim()) {
@@ -65,6 +69,7 @@ ${vehicleInfo ? `רכב: ${vehicleInfo}` : ''}
 
     const session = await prisma.diagnosticSession.create({
       data: {
+        organizationId: org.orgId,
         complaint,
         obdCodes: obdCodes || null,
         symptoms: symptoms || null,

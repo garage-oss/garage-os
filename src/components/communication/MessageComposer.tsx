@@ -6,6 +6,7 @@ import { Copy, Check, MessageCircle, Phone } from 'lucide-react'
 type WorkOrderStatus = 'PENDING' | 'IN_PROGRESS' | 'WAITING_PARTS' | 'COMPLETED' | 'CANCELLED'
 
 interface WorkOrderInfo {
+  id: string
   workOrderNumber: string
   status: WorkOrderStatus
   totalPrice: number
@@ -38,7 +39,7 @@ export function MessageComposer({ wo, quoteId }: Props) {
   const [customMsg, setCustomMsg] = useState('')
 
   const shareUrl = typeof window !== 'undefined'
-    ? `${window.location.origin}/share/work-order/${wo.workOrderNumber}`
+    ? `${window.location.origin}/share/work-order/${wo.id}`
     : ''
 
   const templates: Template[] = [

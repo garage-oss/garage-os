@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { getParts, getPartCategories, getInventoryValue } from '@/lib/parts'
+import { requireOrg } from '@/lib/org'
 import { LowStockBadge } from '@/components/parts/LowStockBadge'
 import { InventoryFilters } from '@/components/parts/InventoryFilters'
 import { formatCurrency } from '@/lib/utils'
@@ -12,14 +13,15 @@ interface PageProps {
 }
 
 export default async function InventoryPage({ searchParams }: PageProps) {
+  const { orgId } = await requireOrg()
   const [parts, categories, { costValue, saleValue, partsCount }] = await Promise.all([
-    getParts({
+    getParts(orgId, {
       search: searchParams.q,
       category: searchParams.category,
       lowStock: searchParams.lowStock === 'true',
     }),
-    getPartCategories(),
-    getInventoryValue(),
+    getPartCategories(orgId),
+    getInventoryValue(orgId),
   ])
 
   const lowStockCount = parts.filter((p) => p.isLowStock).length

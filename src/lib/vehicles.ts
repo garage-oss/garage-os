@@ -32,13 +32,11 @@ export const TRANSMISSION_LABELS: Record<string, string> = {
   CVT: 'CVT',
 }
 
-export async function getVehicles(filters?: {
-  search?: string
-  customerId?: string
-  fuelType?: FuelType
-  inService?: boolean
-}): Promise<VehicleSummary[]> {
-  const where: Prisma.VehicleWhereInput = {}
+export async function getVehicles(
+  orgId: string,
+  filters?: { search?: string; customerId?: string; fuelType?: FuelType; inService?: boolean }
+): Promise<VehicleSummary[]> {
+  const where: Prisma.VehicleWhereInput = { organizationId: orgId }
 
   if (filters?.customerId) where.customerId = filters.customerId
   if (filters?.fuelType) where.fuelType = filters.fuelType
@@ -46,13 +44,21 @@ export async function getVehicles(filters?: {
     where.workOrders = { some: { status: { in: ['PENDING', 'IN_PROGRESS', 'WAITING_PARTS'] } } }
   }
   if (filters?.search) {
-    where.OR = [
-      { plate: { contains: filters.search, mode: 'insensitive' } },
-      { make: { contains: filters.search, mode: 'insensitive' } },
-      { model: { contains: filters.search, mode: 'insensitive' } },
-      { vin: { contains: filters.search, mode: 'insensitive' } },
-      { customer: { name: { contains: filters.search, mode: 'insensitive' } } },
+    where.AND = [
+      { organizationId: orgId },
+      {
+        OR: [
+          { plate: { contains: filters.search, mode: 'insensitive' } },
+          { make: { contains: filters.search, mode: 'insensitive' } },
+          { model: { contains: filters.search, mode: 'insensitive' } },
+          { vin: { contains: filters.search, mode: 'insensitive' } },
+          { customer: { name: { contains: filters.search, mode: 'insensitive' } } },
+        ],
+      },
     ]
+    delete where.organizationId
+    delete where.customerId
+    delete where.fuelType
   }
 
   return prisma.vehicle.findMany({
@@ -65,9 +71,9 @@ export async function getVehicles(filters?: {
   })
 }
 
-export async function getVehicle(id: string): Promise<VehicleProfile | null> {
-  return prisma.vehicle.findUnique({
-    where: { id },
+export async function getVehicle(orgId: string, id: string): Promise<VehicleProfile | null> {
+  return prisma.vehicle.findFirst({
+    where: { id, organizationId: orgId },
     include: {
       customer: true,
       workOrders: {
@@ -78,9 +84,10 @@ export async function getVehicle(id: string): Promise<VehicleProfile | null> {
   })
 }
 
-export async function getVehiclesInService() {
+export async function getVehiclesInService(orgId: string) {
   return prisma.vehicle.findMany({
     where: {
+      organizationId: orgId,
       workOrders: { some: { status: { in: ['IN_PROGRESS', 'WAITING_PARTS'] } } },
     },
     include: {
