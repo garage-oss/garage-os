@@ -1,0 +1,124 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  MECHANIC
+  RECEPTIONIST
+}
+
+enum WorkOrderStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum InvoiceStatus {
+  DRAFT
+  SENT
+  PAID
+  CANCELLED
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String
+  name      String
+  role      Role     @default(MECHANIC)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Customer {
+  id        String    @id @default(cuid())
+  name      String
+  phone     String
+  email     String?
+  address   String?
+  notes     String?
+  vehicles  Vehicle[]
+  invoices  Invoice[]
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+}
+
+model Vehicle {
+  id         String      @id @default(cuid())
+  plate      String      @unique
+  make       String
+  model      String
+  year       Int
+  color      String?
+  vin        String?
+  mileage    Int?
+  customerId String
+  customer   Customer    @relation(fields: [customerId], references: [id])
+  workOrders WorkOrder[]
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+}
+
+model WorkOrder {
+  id          String          @id @default(cuid())
+  number      String          @unique
+  status      WorkOrderStatus @default(PENDING)
+  description String?
+  notes       String?
+  laborCost   Decimal         @default(0) @db.Decimal(10, 2)
+  vehicleId   String
+  vehicle     Vehicle         @relation(fields: [vehicleId], references: [id])
+  items       WorkOrderItem[]
+  invoice     Invoice?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+}
+
+model WorkOrderItem {
+  id          String    @id @default(cuid())
+  description String
+  quantity    Int       @default(1)
+  unitPrice   Decimal   @db.Decimal(10, 2)
+  workOrderId String
+  workOrder   WorkOrder @relation(fields: [workOrderId], references: [id])
+  partId      String?
+  part        Part?     @relation(fields: [partId], references: [id])
+}
+
+model Part {
+  id          String          @id @default(cuid())
+  sku         String          @unique
+  name        String
+  description String?
+  quantity    Int             @default(0)
+  minQuantity Int             @default(5)
+  unitCost    Decimal         @db.Decimal(10, 2)
+  unitPrice   Decimal         @db.Decimal(10, 2)
+  category    String?
+  items       WorkOrderItem[]
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+}
+
+model Invoice {
+  id          String        @id @default(cuid())
+  number      String        @unique
+  status      InvoiceStatus @default(DRAFT)
+  subtotal    Decimal       @db.Decimal(10, 2)
+  tax         Decimal       @default(0) @db.Decimal(10, 2)
+  total       Decimal       @db.Decimal(10, 2)
+  notes       String?
+  customerId  String
+  customer    Customer      @relation(fields: [customerId], references: [id])
+  workOrderId String?       @unique
+  workOrder   WorkOrder?    @relation(fields: [workOrderId], references: [id])
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+}
