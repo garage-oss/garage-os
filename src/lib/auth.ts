@@ -25,19 +25,20 @@ export const authOptions: NextAuthOptions = {
         const valid = await bcrypt.compare(credentials.password, user.password)
         if (!valid) return null
 
-        return { id: user.id, email: user.email, name: user.name, role: user.role }
+        // Record last login (fire-and-forget)
+        void prisma.user.update({ where: { id: user.id }, data: { lastLoginAt: new Date() } }).catch(() => {})
+
+        return { id: user.id, email: user.email, name: user.name }
       },
     }),
   ],
   callbacks: {
     jwt({ token, user }) {
-      if (user) token.role = (user as { role?: string }).role
       return token
     },
     session({ session, token }) {
       if (session.user) {
         ;(session.user as { id?: string }).id = token.sub!
-        ;(session.user as { role?: unknown }).role = token.role
       }
       return session
     },

@@ -8,12 +8,12 @@ import { MemberRole, PlanType } from '@prisma/client'
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export type OrgContext = {
-  orgId: string
-  orgName: string
-  orgSlug: string
-  orgPlan: PlanType
+  orgId:      string
+  orgName:    string
+  orgSlug:    string
+  orgPlan:    PlanType
   memberRole: MemberRole
-  userId: string
+  userId:     string
 }
 
 // ─── Core helpers ─────────────────────────────────────────────────────────────
@@ -24,7 +24,7 @@ export const getOrgContext = cache(async (): Promise<OrgContext | null> => {
   if (!session?.user?.id) return null
 
   const membership = await prisma.membership.findFirst({
-    where: { userId: session.user.id },
+    where: { userId: session.user.id, isActive: true },
     include: {
       organization: { select: { id: true, name: true, slug: true, plan: true } },
     },
@@ -34,16 +34,16 @@ export const getOrgContext = cache(async (): Promise<OrgContext | null> => {
   if (!membership) return null
 
   return {
-    orgId: membership.organizationId,
-    orgName: membership.organization.name,
-    orgSlug: membership.organization.slug,
-    orgPlan: membership.organization.plan,
+    orgId:      membership.organizationId,
+    orgName:    membership.organization.name,
+    orgSlug:    membership.organization.slug,
+    orgPlan:    membership.organization.plan,
     memberRole: membership.role,
-    userId: session.user.id,
+    userId:     session.user.id,
   }
 })
 
-/** Redirect to /onboarding if user has no org. Use in dashboard server components & actions. */
+/** Redirect to /onboarding if user has no active org membership. */
 export async function requireOrg(): Promise<OrgContext> {
   const ctx = await getOrgContext()
   if (!ctx) redirect('/onboarding')
@@ -55,7 +55,7 @@ export async function requireOrg(): Promise<OrgContext> {
 export async function getOrgMembers(orgId: string) {
   return prisma.membership.findMany({
     where: { organizationId: orgId },
-    include: { user: { select: { id: true, name: true, email: true } } },
+    include: { user: { select: { id: true, name: true, email: true, avatarUrl: true, isActive: true, lastLoginAt: true } } },
     orderBy: { createdAt: 'asc' },
   })
 }
@@ -70,9 +70,9 @@ export async function getOrgInvitations(orgId: string) {
 // ─── Plan limits ──────────────────────────────────────────────────────────────
 
 const PLAN_LIMITS: Record<PlanType, Record<string, number>> = {
-  FREE:       { members: 3,  customers: 50,  workOrders: 200 },
-  PRO:        { members: 15, customers: -1,  workOrders: -1  },
-  ENTERPRISE: { members: -1, customers: -1,  workOrders: -1  },
+  FREE:       { members: 3,  customers: 50,   workOrders: 200 },
+  PRO:        { members: 15, customers: -1,   workOrders: -1  },
+  ENTERPRISE: { members: -1, customers: -1,   workOrders: -1  },
 }
 
 export function getPlanLimit(plan: PlanType, resource: string): number {
@@ -99,15 +99,17 @@ export const PLAN_COLORS: Record<PlanType, string> = {
 }
 
 export const ROLE_LABELS: Record<MemberRole, string> = {
-  OWNER:      'בעלים',
-  ADMIN:      'מנהל',
-  TECHNICIAN: 'טכנאי',
-  VIEWER:     'צפייה',
+  OWNER:          'בעלים',
+  MANAGER:        'מנהל',
+  TECHNICIAN:     'טכנאי',
+  SERVICE_ADVISOR:'יועץ שירות',
+  ACCOUNTANT:     'חשבונאי',
 }
 
 export const ROLE_COLORS: Record<MemberRole, string> = {
-  OWNER:      'text-amber-400 bg-amber-400/10',
-  ADMIN:      'text-[#6366f1] bg-[#6366f1]/10',
-  TECHNICIAN: 'text-emerald-400 bg-emerald-400/10',
-  VIEWER:     'text-[#8892a4] bg-[#8892a4]/10',
+  OWNER:          'text-amber-400  bg-amber-400/10  border-amber-400/20',
+  MANAGER:        'text-[#6366f1]  bg-[#6366f1]/10  border-[#6366f1]/20',
+  TECHNICIAN:     'text-emerald-400 bg-emerald-400/10 border-emerald-400/20',
+  SERVICE_ADVISOR:'text-sky-400    bg-sky-400/10    border-sky-400/20',
+  ACCOUNTANT:     'text-violet-400 bg-violet-400/10 border-violet-400/20',
 }

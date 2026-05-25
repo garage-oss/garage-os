@@ -2,41 +2,64 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import type { LucideIcon } from 'lucide-react'
 import {
   LayoutDashboard, Users, Car, Wrench, Package, FileText,
-  Settings, LogOut, Truck, Brain, ChevronUp,
+  Settings, LogOut, Truck, Brain, Shield, UserCog,
 } from 'lucide-react'
 import { signOut } from 'next-auth/react'
 import { PlanType, MemberRole } from '@prisma/client'
-import { PLAN_LABELS, PLAN_COLORS } from '@/lib/org'
+import { PLAN_LABELS, PLAN_COLORS, ROLE_LABELS, ROLE_COLORS } from '@/lib/org'
+import { canAccess, isAdmin, AppModule } from '@/lib/rbac'
 
-const navItems = [
-  { href: '/dashboard', label: 'לוח בקרה', icon: LayoutDashboard, exact: true },
-  { href: '/dashboard/customers', label: 'לקוחות', icon: Users },
-  { href: '/dashboard/vehicles', label: 'רכבים', icon: Car },
-  { href: '/dashboard/work-orders', label: 'פקודות עבודה', icon: Wrench },
-  { href: '/dashboard/inventory', label: 'מלאי', icon: Package },
-  { href: '/dashboard/suppliers', label: 'ספקים', icon: Truck },
-  { href: '/dashboard/quotes', label: 'הצעות מחיר', icon: FileText },
-  { href: '/dashboard/diagnostics', label: 'אבחון AI', icon: Brain },
+interface NavItem {
+  href:   string
+  label:  string
+  icon:   LucideIcon
+  exact?: boolean
+  module: AppModule
+}
+
+const ALL_NAV: NavItem[] = [
+  { href: '/dashboard',             label: 'לוח בקרה',     icon: LayoutDashboard, exact: true, module: 'workOrders' },
+  { href: '/dashboard/customers',   label: 'לקוחות',       icon: Users,           module: 'customers'  },
+  { href: '/dashboard/vehicles',    label: 'רכבים',        icon: Car,             module: 'vehicles'   },
+  { href: '/dashboard/work-orders', label: 'פקודות עבודה', icon: Wrench,          module: 'workOrders' },
+  { href: '/dashboard/inventory',   label: 'מלאי',         icon: Package,         module: 'inventory'  },
+  { href: '/dashboard/suppliers',   label: 'ספקים',        icon: Truck,           module: 'suppliers'  },
+  { href: '/dashboard/quotes',      label: 'הצעות מחיר',  icon: FileText,        module: 'quotes'     },
+  { href: '/dashboard/diagnostics', label: 'אבחון AI',     icon: Brain,           module: 'diagnostics'},
+  { href: '/dashboard/staff',       label: 'צוות',         icon: UserCog,         module: 'users'      },
+  { href: '/dashboard/audit',       label: 'יומן פעולות',  icon: Shield,          module: 'audit'      },
 ]
 
 interface SidebarProps {
-  orgName?: string
-  orgPlan?: PlanType
+  orgName?:    string
+  orgPlan?:    PlanType
   memberRole?: MemberRole
+  userName?:   string
+  userEmail?:  string
 }
 
-export default function Sidebar({ orgName, orgPlan, memberRole }: SidebarProps) {
+export default function Sidebar({ orgName, orgPlan, memberRole, userName, userEmail }: SidebarProps) {
   const pathname = usePathname()
 
   function isActive(href: string, exact?: boolean) {
     return exact ? pathname === href : pathname.startsWith(href)
   }
 
-  const planLabel = orgPlan ? PLAN_LABELS[orgPlan] : null
-  const planColor = orgPlan ? PLAN_COLORS[orgPlan] : ''
-  const canManage = memberRole === 'OWNER' || memberRole === 'ADMIN'
+  const planLabel  = orgPlan ? PLAN_LABELS[orgPlan] : null
+  const planColor  = orgPlan ? PLAN_COLORS[orgPlan] : ''
+  const roleLabel  = memberRole ? ROLE_LABELS[memberRole] : null
+  const roleColor  = memberRole ? ROLE_COLORS[memberRole] : ''
+  const canManage  = memberRole ? isAdmin(memberRole) : false
+
+  // Filter nav to only accessible modules; always show dashboard
+  const visibleNav = ALL_NAV.filter((item) => {
+    if (item.href === '/dashboard') return true
+    if (!memberRole) return false
+    return canAccess(memberRole, item.module)
+  })
 
   return (
     <aside className="fixed inset-y-0 start-0 w-[220px] bg-surface border-e border-[#2e3147] flex flex-col z-50">
@@ -59,7 +82,7 @@ export default function Sidebar({ orgName, orgPlan, memberRole }: SidebarProps) 
 
       {/* Nav */}
       <nav className="flex-1 overflow-y-auto px-2 py-3 space-y-0.5">
-        {navItems.map(({ href, label, icon: Icon, exact }) => {
+        {visibleNav.map(({ href, label, icon: Icon, exact }) => {
           const active = isActive(href, exact)
           return (
             <Link
@@ -79,8 +102,18 @@ export default function Sidebar({ orgName, orgPlan, memberRole }: SidebarProps) 
         })}
       </nav>
 
-      {/* Footer */}
+      {/* User + Footer */}
       <div className="border-t border-[#2e3147] px-2 py-3 space-y-0.5">
+        {/* Current user role badge */}
+        {roleLabel && (
+          <div className="px-3 py-2 mb-1">
+            <div className="text-xs text-[#8892a4] truncate">{userName ?? userEmail ?? 'משתמש'}</div>
+            <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full mt-0.5 inline-block border ${roleColor}`}>
+              {roleLabel}
+            </span>
+          </div>
+        )}
+
         {canManage && (
           <Link
             href="/dashboard/settings"

@@ -1,4 +1,5 @@
 import { requireOrg, getOrgMembers, getOrgInvitations, ROLE_LABELS, ROLE_COLORS } from '@/lib/org'
+import { isAdmin } from '@/lib/rbac'
 import { prisma } from '@/lib/prisma'
 import Link from 'next/link'
 import { Users, CreditCard, Building2, Copy } from 'lucide-react'
@@ -15,7 +16,7 @@ export default async function TeamPage() {
     getOrgInvitations(orgId),
   ])
 
-  const canManage = memberRole === 'OWNER' || memberRole === 'ADMIN'
+  const canManage = isAdmin(memberRole)
   const baseUrl = process.env.NEXTAUTH_URL ?? 'http://localhost:3000'
 
   return (

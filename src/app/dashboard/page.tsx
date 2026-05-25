@@ -7,18 +7,25 @@ import { getOpenQuotesCount, getQuotes } from '@/lib/quotes'
 import { getRecentUploads } from '@/lib/media'
 import { getDiagnosticSessions } from '@/lib/diagnostics'
 import { requireOrg } from '@/lib/org'
+import { getTechnicianWorkload } from '@/lib/staff'
+import { getRecentAuditLogs } from '@/lib/audit'
+import { canAccess, isAdmin } from '@/lib/rbac'
 import { StatusBadge } from '@/components/work-orders/StatusBadge'
 import { VehicleCard } from '@/components/vehicles/VehicleCard'
 import { LowStockBadge } from '@/components/parts/LowStockBadge'
 import { QuoteStatusBadge } from '@/components/quotes/QuoteStatusBadge'
+import { AuditTimeline } from '@/components/audit/AuditTimeline'
 import { formatCurrency, formatDate, toNum } from '@/lib/utils'
-import { Car, Users, Wrench, Package, AlertTriangle, FileText, TrendingUp, Paperclip, Brain, Image } from 'lucide-react'
+import { Car, Users, Wrench, Package, AlertTriangle, FileText, TrendingUp, Paperclip, Brain, Image, UserCog, Shield } from 'lucide-react'
 import { formatFileSize, isImage, isAudio } from '@/lib/media'
 
 export const dynamic = 'force-dynamic'
 
 export default async function DashboardPage() {
-  const { orgId, orgName } = await requireOrg()
+  const { orgId, orgName, memberRole } = await requireOrg()
+
+  const showAudit    = isAdmin(memberRole)
+  const showStaff    = canAccess(memberRole, 'users')
 
   const [
     { active, waitingParts, completedToday, pending, recentWorkOrders },
@@ -30,6 +37,8 @@ export default async function DashboardPage() {
     openQuotes,
     recentUploads,
     diagnosticSessions,
+    workload,
+    recentAudit,
   ] = await Promise.all([
     getDashboardStats(orgId),
     getRecentCustomers(orgId, 5),
@@ -40,6 +49,8 @@ export default async function DashboardPage() {
     getQuotes(orgId, { status: 'SENT' }),
     getRecentUploads(orgId, 6),
     getDiagnosticSessions(orgId),
+    showStaff ? getTechnicianWorkload(orgId) : Promise.resolve([]),
+    showAudit ? getRecentAuditLogs(orgId, 6)  : Promise.resolve([]),
   ])
 
   const stats = [
@@ -336,6 +347,53 @@ export default async function DashboardPage() {
               />
             ))}
           </div>
+        </div>
+      )}
+
+      {/* Technician workload + Recent audit */}
+      {(showStaff || showAudit) && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+          {/* Technician workload */}
+          {showStaff && workload.length > 0 && (
+            <div className="bg-[#1a1d27] border border-[#2e3147] rounded-xl overflow-hidden">
+              <div className="flex items-center justify-between px-5 py-4 border-b border-[#2e3147]">
+                <div className="flex items-center gap-2 font-semibold text-[15px]">
+                  <UserCog size={15} className="text-[#8892a4]" />עומס טכנאים
+                </div>
+                <Link href="/dashboard/staff" className="text-xs text-[#6366f1] hover:underline">הצג צוות</Link>
+              </div>
+              <div className="p-5 space-y-4">
+                {workload.slice(0, 5).map((tech) => (
+                  <div key={tech.name}>
+                    <div className="flex justify-between items-center mb-1.5">
+                      <span className="text-sm font-medium truncate">{tech.name}</span>
+                      <span className="text-xs text-[#8892a4] ms-2 flex-shrink-0">{tech.total} פ"ע</span>
+                    </div>
+                    <div className="flex gap-1 h-1.5 rounded-full overflow-hidden bg-[#252836]">
+                      {tech.inProgress  > 0 && <div className="bg-[#6366f1]  rounded-full" style={{ flex: tech.inProgress  }} />}
+                      {tech.pending     > 0 && <div className="bg-amber-500  rounded-full" style={{ flex: tech.pending     }} />}
+                      {tech.waitingParts> 0 && <div className="bg-orange-500 rounded-full" style={{ flex: tech.waitingParts }} />}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Recent audit log */}
+          {showAudit && recentAudit.length > 0 && (
+            <div className="bg-[#1a1d27] border border-[#2e3147] rounded-xl overflow-hidden">
+              <div className="flex items-center justify-between px-5 py-4 border-b border-[#2e3147]">
+                <div className="flex items-center gap-2 font-semibold text-[15px]">
+                  <Shield size={15} className="text-[#8892a4]" />פעילות אחרונה
+                </div>
+                <Link href="/dashboard/audit" className="text-xs text-[#6366f1] hover:underline">יומן מלא</Link>
+              </div>
+              <div className="p-4">
+                <AuditTimeline entries={recentAudit} compact />
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>

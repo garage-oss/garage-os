@@ -13,7 +13,7 @@ interface Props {
   isInvitation?: boolean
 }
 
-const ASSIGNABLE_ROLES: MemberRole[] = ['ADMIN', 'TECHNICIAN', 'VIEWER']
+const ASSIGNABLE_ROLES: MemberRole[] = ['MANAGER', 'SERVICE_ADVISOR', 'TECHNICIAN', 'ACCOUNTANT']
 
 export function TeamActions({ memberId, currentRole, invitationId, isInvitation }: Props) {
   const [open, setOpen] = useState(false)
