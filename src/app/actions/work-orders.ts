@@ -1,0 +1,112 @@
+'use server'
+
+import { prisma } from '@/lib/prisma'
+import { generateWorkOrderNumber } from '@/lib/work-orders'
+import { revalidatePath } from 'next/cache'
+import { WorkOrderStatus } from '@prisma/client'
+
+export type ActionResult = { error: string } | { success: true; id: string }
+
+// ── Create ───────────────────────────────────────────────────
+export async function createWorkOrder(formData: FormData): Promise<ActionResult> {
+  const customerId = (formData.get('customerId') as string)?.trim()
+  const vehicleId = (formData.get('vehicleId') as string)?.trim()
+  const complaint = (formData.get('complaint') as string)?.trim()
+  const diagnosis = (formData.get('diagnosis') as string)?.trim() || null
+  const assignedTechnician = (formData.get('assignedTechnician') as string)?.trim() || null
+  const laborHours = parseFloat(formData.get('laborHours') as string) || 0
+  const laborRate = parseFloat(formData.get('laborRate') as string) || 150
+  const mileageRaw = formData.get('mileage') as string
+  const mileage = mileageRaw ? parseInt(mileageRaw) : null
+  const notes = (formData.get('notes') as string)?.trim() || null
+
+  if (!customerId) return { error: 'יש לבחור לקוח' }
+  if (!vehicleId) return { error: 'יש לבחור רכב' }
+  if (!complaint) return { error: 'יש להזין תלונת לקוח' }
+
+  try {
+    const workOrderNumber = await generateWorkOrderNumber()
+    const totalPrice = laborHours * laborRate
+
+    const wo = await prisma.workOrder.create({
+      data: {
+        workOrderNumber,
+        customerId,
+        vehicleId,
+        complaint,
+        diagnosis,
+        assignedTechnician,
+        laborHours,
+        laborRate,
+        partsTotal: 0,
+        totalPrice,
+        mileage,
+        notes,
+      },
+    })
+
+    revalidatePath('/dashboard/work-orders')
+    revalidatePath('/dashboard')
+    return { success: true, id: wo.id }
+  } catch (e) {
+    console.error(e)
+    return { error: 'שגיאה ביצירת פקודת עבודה' }
+  }
+}
+
+// ── Update ───────────────────────────────────────────────────
+export async function updateWorkOrder(id: string, formData: FormData): Promise<ActionResult> {
+  const complaint = (formData.get('complaint') as string)?.trim()
+  const diagnosis = (formData.get('diagnosis') as string)?.trim() || null
+  const assignedTechnician = (formData.get('assignedTechnician') as string)?.trim() || null
+  const laborHours = parseFloat(formData.get('laborHours') as string) || 0
+  const laborRate = parseFloat(formData.get('laborRate') as string) || 150
+  const mileageRaw = formData.get('mileage') as string
+  const mileage = mileageRaw ? parseInt(mileageRaw) : null
+  const notes = (formData.get('notes') as string)?.trim() || null
+
+  if (!complaint) return { error: 'יש להזין תלונת לקוח' }
+
+  try {
+    const existing = await prisma.workOrder.findUnique({
+      where: { id },
+      select: { partsTotal: true },
+    })
+    const partsTotal = existing ? Number(existing.partsTotal) : 0
+    const totalPrice = laborHours * laborRate + partsTotal
+
+    await prisma.workOrder.update({
+      where: { id },
+      data: { complaint, diagnosis, assignedTechnician, laborHours, laborRate, totalPrice, mileage, notes },
+    })
+
+    revalidatePath('/dashboard/work-orders')
+    revalidatePath(`/dashboard/work-orders/${id}`)
+    revalidatePath('/dashboard')
+    return { success: true, id }
+  } catch (e) {
+    console.error(e)
+    return { error: 'שגיאה בעדכון פקודת עבודה' }
+  }
+}
+
+// ── Status ───────────────────────────────────────────────────
+export async function updateWorkOrderStatus(id: string, status: WorkOrderStatus): Promise<void> {
+  await prisma.workOrder.update({ where: { id }, data: { status } })
+  revalidatePath('/dashboard/work-orders')
+  revalidatePath(`/dashboard/work-orders/${id}`)
+  revalidatePath('/dashboard')
+}
+
+// ── Delete ───────────────────────────────────────────────────
+export async function deleteWorkOrder(id: string): Promise<{ error?: string }> {
+  try {
+    await prisma.workOrder.delete({ where: { id } })
+    revalidatePath('/dashboard/work-orders')
+    revalidatePath('/dashboard')
+    return {}
+  } catch (e) {
+    console.error(e)
+    return { error: 'שגיאה במחיקת פקודת עבודה' }
+  }
+}
