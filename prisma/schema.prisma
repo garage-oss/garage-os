@@ -28,6 +28,20 @@ enum InvoiceStatus {
   CANCELLED
 }
 
+enum FuelType {
+  GASOLINE
+  DIESEL
+  HYBRID
+  ELECTRIC
+  LPG
+}
+
+enum Transmission {
+  MANUAL
+  AUTOMATIC
+  CVT
+}
+
 model User {
   id        String   @id @default(cuid())
   email     String   @unique
@@ -53,19 +67,23 @@ model Customer {
 }
 
 model Vehicle {
-  id         String      @id @default(cuid())
-  plate      String      @unique
-  make       String
-  model      String
-  year       Int
-  color      String?
-  vin        String?
-  mileage    Int?
-  customerId String
-  customer   Customer    @relation(fields: [customerId], references: [id])
-  workOrders WorkOrder[]
-  createdAt  DateTime    @default(now())
-  updatedAt  DateTime    @updatedAt
+  id           String        @id @default(cuid())
+  plate        String        @unique
+  make         String
+  model        String
+  year         Int
+  color        String?
+  vin          String?
+  engine       String?
+  fuelType     FuelType?
+  transmission Transmission?
+  mileage      Int?
+  notes        String?
+  customerId   String
+  customer     Customer      @relation(fields: [customerId], references: [id])
+  workOrders   WorkOrder[]
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
 }
 
 model WorkOrder {

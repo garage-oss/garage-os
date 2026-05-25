@@ -8,7 +8,9 @@
       "PowerShell(Get-ChildItem -Recurse -File | Where-Object { $_.FullName -notmatch 'node_modules|\\\\.next|\\\\.git' } | Select-Object -ExpandProperty FullName | Sort-Object)",
       "Read(//mnt/c/**)",
       "Bash(npm install *)",
-      "PowerShell(npm install)"
+      "PowerShell(npm install)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)"
     ]
   }
 }

@@ -4,7 +4,7 @@ import bcrypt from 'bcryptjs'
 const prisma = new PrismaClient()
 
 async function main() {
-  // ── Users ────────────────────────────────────────────────
+  // ── Users ─────────────────────────────────────────────────────────────────
   const password = await bcrypt.hash('admin123', 12)
   await prisma.user.upsert({
     where: { email: 'admin@garage.com' },
@@ -12,136 +12,146 @@ async function main() {
     create: { email: 'admin@garage.com', password, name: 'מנהל מערכת', role: 'ADMIN' },
   })
 
-  // ── Customers ────────────────────────────────────────────
+  // ── Customers ─────────────────────────────────────────────────────────────
   const david = await prisma.customer.upsert({
     where: { id: 'cust-1' },
     update: {},
-    create: { id: 'cust-1', name: 'דוד כהן', phone: '050-1234567', email: 'david@example.com', address: 'רחוב הרצל 12, תל אביב' },
+    create: { id: 'cust-1', name: 'דוד כהן', phone: '050-1234567', email: 'david.cohen@gmail.com', address: 'רחוב הרצל 12, תל אביב', notes: 'לקוח ותיק — מגיע לטיפולים כל 6 חודשים' },
   })
   const michal = await prisma.customer.upsert({
     where: { id: 'cust-2' },
     update: {},
-    create: { id: 'cust-2', name: 'מיכל לוי', phone: '052-9876543', email: 'michal@example.com', address: 'שדרות בן גוריון 45, חיפה' },
+    create: { id: 'cust-2', name: 'מיכל לוי', phone: '052-9876543', email: 'michal.levi@walla.com', address: 'שדרות בן גוריון 45, חיפה' },
   })
   const avi = await prisma.customer.upsert({
     where: { id: 'cust-3' },
     update: {},
-    create: { id: 'cust-3', name: 'אבי ישראלי', phone: '054-5554444', address: 'רחוב ויצמן 8, ירושלים' },
+    create: { id: 'cust-3', name: 'אבי ישראלי', phone: '054-5554444', address: 'רחוב ויצמן 8, ירושלים', notes: 'מעדיף תיאום מראש בוואטסאפ' },
+  })
+  const sara = await prisma.customer.upsert({
+    where: { id: 'cust-4' },
+    update: {},
+    create: { id: 'cust-4', name: 'שרה גולדברג', phone: '058-1112233', email: 'sara.g@hotmail.com', address: 'שדרות רוטשילד 22, רמת גן' },
+  })
+  const yaakov = await prisma.customer.upsert({
+    where: { id: 'cust-5' },
+    update: {},
+    create: { id: 'cust-5', name: 'יעקב פרץ', phone: '050-7778888', email: 'yaakov.perets@gmail.com', address: 'רחוב הגפן 5, בת ים' },
+  })
+  const noa = await prisma.customer.upsert({
+    where: { id: 'cust-6' },
+    update: {},
+    create: { id: 'cust-6', name: 'נועה אברהם', phone: '054-3339999', email: 'noa.avraham@gmail.com', address: 'רחוב סוקולוב 14, הרצליה' },
   })
 
-  // ── Vehicles ─────────────────────────────────────────────
+  // ── Vehicles ──────────────────────────────────────────────────────────────
   const corolla = await prisma.vehicle.upsert({
     where: { plate: '123-45-678' },
     update: {},
-    create: { id: 'veh-1', plate: '123-45-678', make: 'Toyota', model: 'Corolla', year: 2019, color: 'לבן', customerId: david.id, mileage: 45000 },
+    create: { id: 'veh-1', plate: '123-45-678', make: 'Toyota', model: 'Corolla', year: 2019, color: 'לבן', engine: '1.6L', fuelType: 'GASOLINE', transmission: 'AUTOMATIC', customerId: david.id, mileage: 45000 },
   })
   const i20 = await prisma.vehicle.upsert({
     where: { plate: '987-65-432' },
     update: {},
-    create: { id: 'veh-2', plate: '987-65-432', make: 'Hyundai', model: 'i20', year: 2021, color: 'כסוף', customerId: david.id, mileage: 22000 },
+    create: { id: 'veh-2', plate: '987-65-432', make: 'Hyundai', model: 'i20', year: 2021, color: 'כסוף', engine: '1.0T', fuelType: 'GASOLINE', transmission: 'AUTOMATIC', customerId: david.id, mileage: 22000 },
   })
   const mazda = await prisma.vehicle.upsert({
     where: { plate: '456-78-901' },
     update: {},
-    create: { id: 'veh-3', plate: '456-78-901', make: 'Mazda', model: '3', year: 2020, color: 'אדום', customerId: michal.id, mileage: 38000 },
+    create: { id: 'veh-3', plate: '456-78-901', make: 'Mazda', model: '3', year: 2020, color: 'אדום', engine: '2.0L', fuelType: 'GASOLINE', transmission: 'AUTOMATIC', customerId: michal.id, mileage: 38000 },
   })
   const civic = await prisma.vehicle.upsert({
     where: { plate: '112-23-334' },
     update: {},
-    create: { id: 'veh-4', plate: '112-23-334', make: 'Honda', model: 'Civic', year: 2018, color: 'שחור', customerId: avi.id, mileage: 72000 },
+    create: { id: 'veh-4', plate: '112-23-334', make: 'Honda', model: 'Civic', year: 2018, color: 'שחור', engine: '1.5T', fuelType: 'GASOLINE', transmission: 'MANUAL', customerId: avi.id, mileage: 72000, vin: 'JHMFC1F37JX000001' },
+  })
+  const sportage = await prisma.vehicle.upsert({
+    where: { plate: '333-44-555' },
+    update: {},
+    create: { id: 'veh-5', plate: '333-44-555', make: 'Kia', model: 'Sportage', year: 2022, color: 'כחול', engine: '1.6T', fuelType: 'GASOLINE', transmission: 'AUTOMATIC', customerId: sara.id, mileage: 14000 },
+  })
+  await prisma.vehicle.upsert({
+    where: { plate: '666-77-888' },
+    update: {},
+    create: { id: 'veh-6', plate: '666-77-888', make: 'Volkswagen', model: 'Golf', year: 2019, color: 'אפור', engine: '2.0 TDI', fuelType: 'DIESEL', transmission: 'MANUAL', customerId: yaakov.id, mileage: 61000, vin: 'WVWZZZ1KZAW000002' },
+  })
+  await prisma.vehicle.upsert({
+    where: { plate: '999-00-111' },
+    update: {},
+    create: { id: 'veh-7', plate: '999-00-111', make: 'Subaru', model: 'Forester', year: 2021, color: 'ירוק', engine: '2.0L', fuelType: 'GASOLINE', transmission: 'AUTOMATIC', customerId: noa.id, mileage: 29000 },
+  })
+  await prisma.vehicle.upsert({
+    where: { plate: '222-33-444' },
+    update: {},
+    create: { id: 'veh-8', plate: '222-33-444', make: 'Mitsubishi', model: 'Outlander', year: 2020, color: 'לבן', engine: '2.4L', fuelType: 'HYBRID', transmission: 'AUTOMATIC', customerId: sara.id, mileage: 43000, notes: 'חיידריד — טעינה 220V בלבד' },
+  })
+  await prisma.vehicle.upsert({
+    where: { plate: '555-66-777' },
+    update: {},
+    create: { id: 'veh-9', plate: '555-66-777', make: 'Skoda', model: 'Octavia', year: 2018, color: 'שחור', engine: '1.5 TSI', fuelType: 'GASOLINE', transmission: 'AUTOMATIC', customerId: david.id, mileage: 88000 },
+  })
+  await prisma.vehicle.upsert({
+    where: { plate: '777-11-222' },
+    update: {},
+    create: { id: 'veh-10', plate: '777-11-222', make: 'Toyota', model: 'RAV4', year: 2023, color: 'כסוף', engine: '2.5L', fuelType: 'HYBRID', transmission: 'CVT', customerId: michal.id, mileage: 8000 },
   })
 
-  // ── Work Orders ───────────────────────────────────────────
+  // ── Work Orders ────────────────────────────────────────────────────────────
   const orders = [
     {
-      id: 'wo-1',
-      workOrderNumber: 'WO-2026-0001',
-      status: 'PENDING' as const,
+      id: 'wo-1', workOrderNumber: 'WO-2026-0001', status: 'PENDING' as const,
       complaint: 'רעש חזק מהמנוע בזמן נסיעה, במיוחד בהאצה',
-      diagnosis: null,
-      laborHours: 2.0,
-      laborRate: 150,
-      partsTotal: 0,
-      totalPrice: 300,
-      assignedTechnician: 'יוסי כהן',
-      mileage: 45200,
-      customerId: david.id,
-      vehicleId: corolla.id,
+      diagnosis: null, laborHours: 2.0, laborRate: 150, partsTotal: 0, totalPrice: 300,
+      assignedTechnician: 'יוסי כהן', mileage: 45200, customerId: david.id, vehicleId: corolla.id,
     },
     {
-      id: 'wo-2',
-      workOrderNumber: 'WO-2026-0002',
-      status: 'IN_PROGRESS' as const,
+      id: 'wo-2', workOrderNumber: 'WO-2026-0002', status: 'IN_PROGRESS' as const,
       complaint: 'בלמים תופסים בצד שמאל, הרגשה של משיכה בבלימה',
       diagnosis: 'שחיקת רפידות בלם קדמי שמאל — נדרש החלפה',
-      laborHours: 1.5,
-      laborRate: 150,
-      partsTotal: 280,
-      totalPrice: 505,
-      assignedTechnician: 'אמיר דוד',
-      mileage: 38500,
-      customerId: michal.id,
-      vehicleId: mazda.id,
+      laborHours: 1.5, laborRate: 150, partsTotal: 280, totalPrice: 505,
+      assignedTechnician: 'אמיר דוד', mileage: 38500, customerId: michal.id, vehicleId: mazda.id,
     },
     {
-      id: 'wo-3',
-      workOrderNumber: 'WO-2026-0003',
-      status: 'WAITING_PARTS' as const,
+      id: 'wo-3', workOrderNumber: 'WO-2026-0003', status: 'WAITING_PARTS' as const,
       complaint: 'דלת נהג לא נסגרת כראוי, מאבדת אחיזה',
       diagnosis: 'נדרש החלפת מנגנון נעילת דלת — חלקים הוזמנו',
-      laborHours: 1.0,
-      laborRate: 150,
-      partsTotal: 450,
-      totalPrice: 600,
-      assignedTechnician: 'יוסי כהן',
-      mileage: 72300,
-      customerId: avi.id,
-      vehicleId: civic.id,
+      laborHours: 1.0, laborRate: 150, partsTotal: 450, totalPrice: 600,
+      assignedTechnician: 'יוסי כהן', mileage: 72300, customerId: avi.id, vehicleId: civic.id,
     },
     {
-      id: 'wo-4',
-      workOrderNumber: 'WO-2026-0004',
-      status: 'COMPLETED' as const,
+      id: 'wo-4', workOrderNumber: 'WO-2026-0004', status: 'COMPLETED' as const,
       complaint: 'שמן מנוע דולף — כתמים על הרצפה',
       diagnosis: 'נזילה מגזקת שמן — הוחלפה בהצלחה',
-      laborHours: 2.5,
-      laborRate: 150,
-      partsTotal: 120,
-      totalPrice: 495,
-      assignedTechnician: 'אמיר דוד',
-      mileage: 22100,
-      customerId: david.id,
-      vehicleId: i20.id,
+      laborHours: 2.5, laborRate: 150, partsTotal: 120, totalPrice: 495,
+      assignedTechnician: 'אמיר דוד', mileage: 22100, customerId: david.id, vehicleId: i20.id,
     },
     {
-      id: 'wo-5',
-      workOrderNumber: 'WO-2026-0005',
-      status: 'IN_PROGRESS' as const,
+      id: 'wo-5', workOrderNumber: 'WO-2026-0005', status: 'IN_PROGRESS' as const,
       complaint: 'מיזוג אוויר לא מקרר — יוצא אוויר חם בלבד',
       diagnosis: 'מחסור בגז מקרר, בדיקת דליפות בביצוע',
-      laborHours: 3.0,
-      laborRate: 150,
-      partsTotal: 350,
-      totalPrice: 800,
-      assignedTechnician: 'רון לוי',
-      mileage: 45300,
-      customerId: david.id,
-      vehicleId: corolla.id,
+      laborHours: 3.0, laborRate: 150, partsTotal: 350, totalPrice: 800,
+      assignedTechnician: 'רון לוי', mileage: 45300, customerId: david.id, vehicleId: corolla.id,
     },
     {
-      id: 'wo-6',
-      workOrderNumber: 'WO-2026-0006',
-      status: 'COMPLETED' as const,
+      id: 'wo-6', workOrderNumber: 'WO-2026-0006', status: 'COMPLETED' as const,
       complaint: 'טיפול שגרתי — 40,000 ק"מ',
       diagnosis: 'הוחלפו: שמן, פילטרים, בדיקת רצועת טיימינג — תקין',
-      laborHours: 3.5,
-      laborRate: 150,
-      partsTotal: 380,
-      totalPrice: 905,
-      assignedTechnician: 'יוסי כהן',
-      mileage: 38000,
-      customerId: michal.id,
-      vehicleId: mazda.id,
+      laborHours: 3.5, laborRate: 150, partsTotal: 380, totalPrice: 905,
+      assignedTechnician: 'יוסי כהן', mileage: 38000, customerId: michal.id, vehicleId: mazda.id,
+    },
+    {
+      id: 'wo-7', workOrderNumber: 'WO-2026-0007', status: 'COMPLETED' as const,
+      complaint: 'נורת מנוע דולקת — בדיקת מחשב',
+      diagnosis: 'שגיאת חיישן חמצן — הוחלף',
+      laborHours: 1.0, laborRate: 150, partsTotal: 230, totalPrice: 380,
+      assignedTechnician: 'אמיר דוד', mileage: 60500, customerId: yaakov.id, vehicleId: 'veh-6',
+    },
+    {
+      id: 'wo-8', workOrderNumber: 'WO-2026-0008', status: 'PENDING' as const,
+      complaint: 'רעידה בהגה במהירות גבוהה',
+      diagnosis: null,
+      laborHours: 1.5, laborRate: 150, partsTotal: 0, totalPrice: 225,
+      assignedTechnician: 'רון לוי', mileage: 14200, customerId: sara.id, vehicleId: sportage.id,
     },
   ]
 
@@ -153,7 +163,7 @@ async function main() {
     })
   }
 
-  console.log('✓ Seed complete — admin@garage.com / admin123')
+  console.log('✓ Seed complete — 6 customers, 10 vehicles, 8 work orders')
 }
 
 main()
