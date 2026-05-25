@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { LayoutDashboard, Users, Car, Wrench, Package, FileText, Settings, LogOut } from 'lucide-react'
+import { LayoutDashboard, Users, Car, Wrench, Package, FileText, Settings, LogOut, Truck } from 'lucide-react'
 import { signOut } from 'next-auth/react'
 
 const navItems = [
@@ -11,7 +11,8 @@ const navItems = [
   { href: '/dashboard/vehicles', label: 'רכבים', icon: Car },
   { href: '/dashboard/work-orders', label: 'פקודות עבודה', icon: Wrench },
   { href: '/dashboard/inventory', label: 'מלאי', icon: Package },
-  { href: '/dashboard/invoices', label: 'חשבוניות', icon: FileText },
+  { href: '/dashboard/suppliers', label: 'ספקים', icon: Truck },
+  { href: '/dashboard/quotes', label: 'הצעות מחיר', icon: FileText },
 ]
 
 export default function Sidebar() {

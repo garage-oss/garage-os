@@ -2,10 +2,14 @@ import Link from 'next/link'
 import { getDashboardStats } from '@/lib/work-orders'
 import { getRecentCustomers } from '@/lib/customers'
 import { getVehiclesInService } from '@/lib/vehicles'
+import { getLowStockParts, getInventoryValue } from '@/lib/parts'
+import { getOpenQuotesCount, getQuotes } from '@/lib/quotes'
 import { StatusBadge } from '@/components/work-orders/StatusBadge'
 import { VehicleCard } from '@/components/vehicles/VehicleCard'
+import { LowStockBadge } from '@/components/parts/LowStockBadge'
+import { QuoteStatusBadge } from '@/components/quotes/QuoteStatusBadge'
 import { formatCurrency, formatDate, toNum } from '@/lib/utils'
-import { Car, Users, Wrench } from 'lucide-react'
+import { Car, Users, Wrench, Package, AlertTriangle, FileText, TrendingUp } from 'lucide-react'
 
 export const dynamic = 'force-dynamic'
 
@@ -14,10 +18,18 @@ export default async function DashboardPage() {
     { active, waitingParts, completedToday, pending, recentWorkOrders },
     recentCustomers,
     vehiclesInService,
+    lowStockParts,
+    { costValue, saleValue },
+    openQuotesCount,
+    openQuotes,
   ] = await Promise.all([
     getDashboardStats(),
     getRecentCustomers(5),
     getVehiclesInService(),
+    getLowStockParts(),
+    getInventoryValue(),
+    getOpenQuotesCount(),
+    getQuotes({ status: 'SENT' }),
   ])
 
   const stats = [
@@ -40,7 +52,7 @@ export default async function DashboardPage() {
         </Link>
       </div>
 
-      {/* Stats */}
+      {/* Work Order Stats */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
         {stats.map((s) => (
           <div key={s.label} className="bg-[#1a1d27] border border-[#2e3147] rounded-xl p-5 relative overflow-hidden">
@@ -50,6 +62,37 @@ export default async function DashboardPage() {
             <div className="text-xs text-[#8892a4]">{s.sub}</div>
           </div>
         ))}
+      </div>
+
+      {/* Inventory + Quotes quick-stats */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
+        <Link href="/dashboard/inventory" className="bg-[#1a1d27] border border-[#2e3147] rounded-xl p-4 flex items-center gap-4 hover:border-[#6366f1]/40 transition-colors">
+          <div className="w-10 h-10 rounded-xl bg-[#6366f1]/15 flex items-center justify-center flex-shrink-0">
+            <Package size={18} className="text-[#6366f1]" />
+          </div>
+          <div>
+            <div className="text-lg font-bold">{formatCurrency(saleValue)}</div>
+            <div className="text-xs text-[#8892a4]">שווי מלאי</div>
+          </div>
+        </Link>
+        <Link href="/dashboard/inventory?lowStock=true" className="bg-[#1a1d27] border border-[#2e3147] rounded-xl p-4 flex items-center gap-4 hover:border-amber-500/40 transition-colors">
+          <div className="w-10 h-10 rounded-xl bg-amber-500/15 flex items-center justify-center flex-shrink-0">
+            <AlertTriangle size={18} className="text-amber-400" />
+          </div>
+          <div>
+            <div className="text-lg font-bold">{lowStockParts.length}</div>
+            <div className="text-xs text-[#8892a4]">חלקים במלאי נמוך</div>
+          </div>
+        </Link>
+        <Link href="/dashboard/quotes?status=SENT" className="bg-[#1a1d27] border border-[#2e3147] rounded-xl p-4 flex items-center gap-4 hover:border-blue-500/40 transition-colors">
+          <div className="w-10 h-10 rounded-xl bg-blue-500/15 flex items-center justify-center flex-shrink-0">
+            <FileText size={18} className="text-blue-400" />
+          </div>
+          <div>
+            <div className="text-lg font-bold">{openQuotesCount}</div>
+            <div className="text-xs text-[#8892a4]">הצעות פתוחות</div>
+          </div>
+        </Link>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
@@ -109,6 +152,66 @@ export default async function DashboardPage() {
             </div>
           )}
         </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+        {/* Low Stock Parts */}
+        {lowStockParts.length > 0 && (
+          <div className="bg-[#1a1d27] border border-amber-500/20 rounded-xl overflow-hidden">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-[#2e3147]">
+              <div className="flex items-center gap-2 font-semibold text-[15px]">
+                <AlertTriangle size={15} className="text-amber-400" />
+                <span>מלאי נמוך</span>
+                <span className="text-xs bg-amber-500/15 text-amber-400 px-2 py-0.5 rounded-full font-semibold">{lowStockParts.length}</span>
+              </div>
+              <Link href="/dashboard/inventory?lowStock=true" className="text-xs text-[#6366f1] hover:underline">הצג הכל</Link>
+            </div>
+            <div className="divide-y divide-[#2e3147]">
+              {lowStockParts.slice(0, 5).map(p => (
+                <div key={p.id} className="flex items-center justify-between px-5 py-3 hover:bg-[#252836]/40 transition-colors">
+                  <div className="min-w-0">
+                    <Link href={`/dashboard/inventory/${p.id}`} className="font-mono text-xs text-[#6366f1] hover:underline font-semibold">{p.sku}</Link>
+                    <div className="text-sm font-medium truncate">{p.name}</div>
+                    <div className="text-xs text-[#8892a4]">{p.category ?? '—'}</div>
+                  </div>
+                  <div className="flex flex-col items-end gap-1.5 shrink-0 ms-3">
+                    <LowStockBadge quantity={p.quantity} minQuantity={p.minQuantity} />
+                    <span className="text-xs text-[#8892a4]">{p.quantity} / {p.minQuantity} יח׳</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Open Quotes */}
+        {openQuotes.length > 0 && (
+          <div className="bg-[#1a1d27] border border-[#2e3147] rounded-xl overflow-hidden">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-[#2e3147]">
+              <div className="flex items-center gap-2 font-semibold text-[15px]">
+                <FileText size={15} className="text-[#8892a4]" />הצעות ממתינות לאישור
+              </div>
+              <Link href="/dashboard/quotes?status=SENT" className="text-xs text-[#6366f1] hover:underline">הצג הכל</Link>
+            </div>
+            <div className="divide-y divide-[#2e3147]">
+              {openQuotes.slice(0, 5).map(q => (
+                <div key={q.id} className="flex items-center justify-between px-5 py-3 hover:bg-[#252836]/40 transition-colors">
+                  <div className="min-w-0">
+                    <Link href={`/dashboard/quotes/${q.id}`} className="font-mono text-xs text-[#6366f1] hover:underline font-semibold">{q.quoteNumber}</Link>
+                    <div className="text-sm font-medium truncate">{q.customer.name}</div>
+                    {q.vehicle && (
+                      <div className="text-xs text-[#8892a4]">{q.vehicle.make} {q.vehicle.model} — {q.vehicle.plate}</div>
+                    )}
+                  </div>
+                  <div className="flex flex-col items-end gap-1.5 shrink-0 ms-3">
+                    <QuoteStatusBadge status={q.status} />
+                    <span className="text-xs font-semibold text-[#6366f1]">{formatCurrency(q.totalPrice)}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Vehicles in Service */}
