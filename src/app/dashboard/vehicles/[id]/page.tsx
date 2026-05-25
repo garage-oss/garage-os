@@ -4,6 +4,7 @@ import { ChevronRight, Car, User, Gauge, Fuel, Settings2, Pencil } from 'lucide-
 import { getVehicle, FUEL_LABELS, TRANSMISSION_LABELS } from '@/lib/vehicles'
 import { StatusBadge } from '@/components/work-orders/StatusBadge'
 import { DeleteButton } from '@/components/ui/DeleteButton'
+import { VehicleMediaSection } from '@/components/vehicles/VehicleMediaSection'
 import { deleteVehicle } from '@/app/actions/vehicles'
 import { formatCurrency, formatDate, toNum } from '@/lib/utils'
 
@@ -124,6 +125,9 @@ export default async function VehicleProfilePage({ params }: Props) {
           <p className="text-sm text-[#8892a4] leading-relaxed">{vehicle.notes}</p>
         </div>
       )}
+
+      {/* Media Gallery */}
+      <VehicleMediaSection vehicleId={vehicle.id} />
 
       {/* Service History */}
       <div>

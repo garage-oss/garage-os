@@ -4,12 +4,15 @@ import { getRecentCustomers } from '@/lib/customers'
 import { getVehiclesInService } from '@/lib/vehicles'
 import { getLowStockParts, getInventoryValue } from '@/lib/parts'
 import { getOpenQuotesCount, getQuotes } from '@/lib/quotes'
+import { getRecentUploads } from '@/lib/media'
+import { getDiagnosticSessions } from '@/lib/diagnostics'
 import { StatusBadge } from '@/components/work-orders/StatusBadge'
 import { VehicleCard } from '@/components/vehicles/VehicleCard'
 import { LowStockBadge } from '@/components/parts/LowStockBadge'
 import { QuoteStatusBadge } from '@/components/quotes/QuoteStatusBadge'
 import { formatCurrency, formatDate, toNum } from '@/lib/utils'
-import { Car, Users, Wrench, Package, AlertTriangle, FileText, TrendingUp } from 'lucide-react'
+import { Car, Users, Wrench, Package, AlertTriangle, FileText, TrendingUp, Paperclip, Brain, Image } from 'lucide-react'
+import { formatFileSize, isImage, isAudio } from '@/lib/media'
 
 export const dynamic = 'force-dynamic'
 
@@ -22,6 +25,8 @@ export default async function DashboardPage() {
     { costValue, saleValue },
     openQuotesCount,
     openQuotes,
+    recentUploads,
+    diagnosticSessions,
   ] = await Promise.all([
     getDashboardStats(),
     getRecentCustomers(5),
@@ -30,6 +35,8 @@ export default async function DashboardPage() {
     getInventoryValue(),
     getOpenQuotesCount(),
     getQuotes({ status: 'SENT' }),
+    getRecentUploads(6),
+    getDiagnosticSessions(),
   ])
 
   const stats = [
@@ -64,8 +71,8 @@ export default async function DashboardPage() {
         ))}
       </div>
 
-      {/* Inventory + Quotes quick-stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
+      {/* Inventory + Quotes + Diagnostics quick-stats */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5">
         <Link href="/dashboard/inventory" className="bg-[#1a1d27] border border-[#2e3147] rounded-xl p-4 flex items-center gap-4 hover:border-[#6366f1]/40 transition-colors">
           <div className="w-10 h-10 rounded-xl bg-[#6366f1]/15 flex items-center justify-center flex-shrink-0">
             <Package size={18} className="text-[#6366f1]" />
@@ -91,6 +98,15 @@ export default async function DashboardPage() {
           <div>
             <div className="text-lg font-bold">{openQuotesCount}</div>
             <div className="text-xs text-[#8892a4]">הצעות פתוחות</div>
+          </div>
+        </Link>
+        <Link href="/dashboard/diagnostics" className="bg-[#1a1d27] border border-[#2e3147] rounded-xl p-4 flex items-center gap-4 hover:border-[#6366f1]/40 transition-colors">
+          <div className="w-10 h-10 rounded-xl bg-[#6366f1]/15 flex items-center justify-center flex-shrink-0">
+            <Brain size={18} className="text-[#6366f1]" />
+          </div>
+          <div>
+            <div className="text-lg font-bold">{diagnosticSessions.length}</div>
+            <div className="text-xs text-[#8892a4]">אבחוני AI</div>
           </div>
         </Link>
       </div>
@@ -213,6 +229,82 @@ export default async function DashboardPage() {
           </div>
         )}
       </div>
+
+      {/* Recent Uploads + AI Diagnostics */}
+      {(recentUploads.length > 0 || diagnosticSessions.length > 0) && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+          {/* Recent Uploads */}
+          {recentUploads.length > 0 && (
+            <div className="bg-[#1a1d27] border border-[#2e3147] rounded-xl overflow-hidden">
+              <div className="flex items-center justify-between px-5 py-4 border-b border-[#2e3147]">
+                <div className="flex items-center gap-2 font-semibold text-[15px]">
+                  <Paperclip size={15} className="text-[#8892a4]" />העלאות אחרונות
+                </div>
+              </div>
+              <div className="divide-y divide-[#2e3147]">
+                {recentUploads.map((f) => (
+                  <div key={f.id} className="flex items-center gap-3 px-5 py-3">
+                    {isImage(f.mimeType) ? (
+                      <img src={f.url} alt="" className="w-9 h-9 rounded-lg object-cover flex-shrink-0" />
+                    ) : (
+                      <div className="w-9 h-9 rounded-lg bg-[#252836] flex items-center justify-center flex-shrink-0">
+                        {isAudio(f.mimeType) ? <Paperclip size={14} className="text-purple-400" /> : <Paperclip size={14} className="text-[#8892a4]" />}
+                      </div>
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <div className="text-xs font-medium truncate">{f.originalName}</div>
+                      <div className="text-xs text-[#8892a4]">{formatFileSize(f.size)}</div>
+                    </div>
+                    <div className="flex-shrink-0 text-xs text-[#8892a4]">
+                      {f.workOrder ? (
+                        <Link href={`/dashboard/work-orders/${f.workOrder?.workOrderNumber}`} className="font-mono text-[#6366f1] hover:underline">
+                          {f.workOrder.workOrderNumber}
+                        </Link>
+                      ) : f.vehicle ? (
+                        <span className="font-mono">{f.vehicle.plate}</span>
+                      ) : null}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Recent Diagnostics */}
+          {diagnosticSessions.length > 0 && (
+            <div className="bg-[#1a1d27] border border-[#2e3147] rounded-xl overflow-hidden">
+              <div className="flex items-center justify-between px-5 py-4 border-b border-[#2e3147]">
+                <div className="flex items-center gap-2 font-semibold text-[15px]">
+                  <Brain size={15} className="text-[#6366f1]" />אבחונים AI אחרונים
+                </div>
+                <Link href="/dashboard/diagnostics" className="text-xs text-[#6366f1] hover:underline">הצג הכל</Link>
+              </div>
+              <div className="divide-y divide-[#2e3147]">
+                {diagnosticSessions.slice(0, 5).map((s) => (
+                  <Link key={s.id} href={`/dashboard/diagnostics/${s.id}`} className="flex items-center justify-between px-5 py-3 hover:bg-[#252836]/40 transition-colors">
+                    <div className="min-w-0 flex-1">
+                      <div className="text-sm font-medium truncate">{s.complaint}</div>
+                      {s.vehicle && (
+                        <div className="text-xs text-[#8892a4]">{s.vehicle.make} {s.vehicle.model} — {s.vehicle.plate}</div>
+                      )}
+                    </div>
+                    <div className="flex-shrink-0 ms-3">
+                      <span className={`text-xs border px-2 py-0.5 rounded-full font-semibold ${
+                        s.urgency === 'CRITICAL' ? 'text-red-400 bg-red-500/10 border-red-500/25' :
+                        s.urgency === 'HIGH' ? 'text-orange-400 bg-orange-500/10 border-orange-500/25' :
+                        s.urgency === 'MEDIUM' ? 'text-amber-400 bg-amber-500/10 border-amber-500/25' :
+                        'text-emerald-400 bg-emerald-500/10 border-emerald-500/25'
+                      }`}>
+                        {s.urgency === 'CRITICAL' ? 'קריטי' : s.urgency === 'HIGH' ? 'דחוף' : s.urgency === 'MEDIUM' ? 'בינוני' : 'רגיל'}
+                      </span>
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Vehicles in Service */}
       {vehiclesInService.length > 0 && (

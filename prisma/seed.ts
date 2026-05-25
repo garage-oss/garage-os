@@ -373,7 +373,113 @@ async function main() {
     ],
   })
 
-  console.log('✓ Seed complete — 6 customers, 10 vehicles, 8 work orders, 4 suppliers, 10 parts, 3 quotes')
+  // ── Technician Notes ──────────────────────────────────────────────────────
+  const noteData = [
+    {
+      id: 'note-1', workOrderId: 'wo-2', visibility: 'INTERNAL' as const,
+      authorName: 'אמיר דוד',
+      content: 'רפידות בלם קדמי בצד שמאל שחוקות לגמרי — 1.5mm בלבד. דיסקים במצב טוב, רק ניקוי.',
+    },
+    {
+      id: 'note-2', workOrderId: 'wo-2', visibility: 'CUSTOMER' as const,
+      authorName: 'אמיר דוד',
+      content: 'מצאנו שחיקה חמורה ברפידות הבלם הקדמיות. ממליצים להחליף גם את הצד הימני למניעת בלאי לא אחיד.',
+    },
+    {
+      id: 'note-3', workOrderId: 'wo-5', visibility: 'INTERNAL' as const,
+      authorName: 'רון לוי',
+      content: 'נמצאה דליפה קטנה בצינור גז המקרר ליד הקומפרסור. מחכה לאישור לקוח לפני תיקון.',
+    },
+    {
+      id: 'note-4', workOrderId: 'wo-1', visibility: 'INTERNAL' as const,
+      authorName: 'יוסי כהן',
+      content: 'רעש מגיע מאזור הגיר — כנראה מיסב עמוד הגה. צריך בדיקה מעמיקה יותר.',
+    },
+  ]
+  for (const note of noteData) {
+    await prisma.technicianNote.upsert({
+      where: { id: note.id },
+      update: {},
+      create: note,
+    })
+  }
+
+  // ── Diagnostic Sessions ────────────────────────────────────────────────────
+  const diagSessions = [
+    {
+      id: 'diag-1',
+      complaint: 'נורת בקרת מנוע דולקת, צריכת דלק גבוהה במיוחד — כ-12 ליטר ל-100 ק"מ',
+      obdCodes: 'P0171, P0174',
+      symptoms: 'נורת בקרת מנוע דולקת, צריכת דלק גבוהה',
+      urgency: 'MEDIUM' as const,
+      vehicleId: corolla.id,
+      workOrderId: 'wo-1',
+      aiResponse: JSON.stringify({
+        possibleCauses: [
+          'תקלה במסכת אוויר — יתכן דליפת אוויר לאחר מד זרימה אוויר',
+          'זיהום או תקלה בחיישן מד זרימת האוויר (MAF)',
+          'פלאג מתדלק פגום או מסתם דלק בעייתי',
+        ],
+        recommendedTests: [
+          'קריאת קודי שגיאה מלאה עם סורק OBD2',
+          'בדיקת מד זרימת אוויר עם מולטימטר',
+          'ריסוס קרבורטור לאיתור דליפות אוויר',
+          'בדיקת לחץ דלק',
+        ],
+        commonFixes: [
+          'ניקוי או החלפה של מד זרימת האוויר (MAF)',
+          'החלפת פילטר אוויר',
+          'איטום דליפות בצינורות אוויר',
+        ],
+        estimatedDifficulty: 'MEDIUM',
+        estimatedTime: '2-3 שעות',
+        urgencyLevel: 'MEDIUM',
+        additionalNotes: 'קודים P0171/P0174 מצביעים על תערובת דלה — הסיבה הנפוצה ביותר היא דליפת אוויר לאחר ה-MAF.',
+      }),
+    },
+    {
+      id: 'diag-2',
+      complaint: 'מיזוג אוויר לא מקרר — יוצא אוויר חם בלבד, קולות חריגים מהקומפרסור',
+      obdCodes: null,
+      symptoms: 'מיזוג אוויר לא קר, רעש חריג',
+      urgency: 'HIGH' as const,
+      vehicleId: mazda.id,
+      workOrderId: 'wo-5',
+      aiResponse: JSON.stringify({
+        possibleCauses: [
+          'מחסור בגז מקרר R-134a עקב דליפה',
+          'כשל בקומפרסור מיזוג אוויר',
+          'תקלה ברכיב פנוימטי (שסתום הרחבה)',
+          'נזק לקונדנסר',
+        ],
+        recommendedTests: [
+          'בדיקת לחץ גז מקרר עם מד לחצים',
+          'בדיקת זרם חשמלי לקומפרסור',
+          'בדיקת בדיקת UV לאיתור דליפות גז',
+          'בדיקת מאוורר הקונדנסר',
+        ],
+        commonFixes: [
+          'מילוי גז מקרר R-134a',
+          'תיקון דליפות + מילוי גז',
+          'החלפת קומפרסור',
+          'החלפת שסתום הרחבה',
+        ],
+        estimatedDifficulty: 'HIGH',
+        estimatedTime: '3-5 שעות',
+        urgencyLevel: 'HIGH',
+        additionalNotes: 'אם הקומפרסור מוציא קולות חריגים, יש להפסיק שימוש במיזוג מיד למניעת נזק נוסף.',
+      }),
+    },
+  ]
+  for (const diag of diagSessions) {
+    await prisma.diagnosticSession.upsert({
+      where: { id: diag.id },
+      update: {},
+      create: diag,
+    })
+  }
+
+  console.log('✓ Seed complete — 6 customers, 10 vehicles, 8 work orders, 4 suppliers, 10 parts, 3 quotes, 4 notes, 2 diagnostics')
 }
 
 main()

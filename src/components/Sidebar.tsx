@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { LayoutDashboard, Users, Car, Wrench, Package, FileText, Settings, LogOut, Truck } from 'lucide-react'
+import { LayoutDashboard, Users, Car, Wrench, Package, FileText, Settings, LogOut, Truck, Brain } from 'lucide-react'
 import { signOut } from 'next-auth/react'
 
 const navItems = [
@@ -13,6 +13,7 @@ const navItems = [
   { href: '/dashboard/inventory', label: 'מלאי', icon: Package },
   { href: '/dashboard/suppliers', label: 'ספקים', icon: Truck },
   { href: '/dashboard/quotes', label: 'הצעות מחיר', icon: FileText },
+  { href: '/dashboard/diagnostics', label: 'אבחון AI', icon: Brain },
 ]
 
 export default function Sidebar() {

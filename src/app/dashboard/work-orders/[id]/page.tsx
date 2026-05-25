@@ -1,11 +1,16 @@
 'use client'
 
-import { useEffect, useState, useTransition } from 'react'
+import { useEffect, useState, useTransition, useCallback } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { ChevronRight, Pencil, Trash2, Loader2, User, Car, Wrench, Clock } from 'lucide-react'
+import { ChevronRight, Pencil, Trash2, Loader2, User, Car, Wrench, Clock, Paperclip, MessageCircle, Brain } from 'lucide-react'
 import { StatusBadge } from '@/components/work-orders/StatusBadge'
 import { StatusActions } from '@/components/work-orders/StatusActions'
+import { FileUploader } from '@/components/media/FileUploader'
+import { MediaGallery, type MediaItem } from '@/components/media/MediaGallery'
+import { NoteTimeline, type NoteItem } from '@/components/notes/NoteTimeline'
+import { NoteForm } from '@/components/notes/NoteForm'
+import { MessageComposer } from '@/components/communication/MessageComposer'
 import { deleteWorkOrder } from '@/app/actions/work-orders'
 import { WorkOrderStatus } from '@prisma/client'
 
@@ -28,6 +33,8 @@ interface WorkOrderDetail {
   vehicle: { id: string; plate: string; make: string; model: string; year: number; color: string | null }
 }
 
+type Tab = 'overview' | 'media' | 'communication'
+
 function fmt(n: number) {
   return `₪${n.toLocaleString('he-IL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 }
@@ -45,11 +52,21 @@ function InfoBox({ label, value }: { label: string; value: string | null | undef
   )
 }
 
+const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
+  { id: 'overview', label: 'סקירה', icon: <Wrench size={13} /> },
+  { id: 'media', label: 'מדיה ופתקים', icon: <Paperclip size={13} /> },
+  { id: 'communication', label: 'תקשורת לקוח', icon: <MessageCircle size={13} /> },
+]
+
 export default function WorkOrderDetailPage({ params }: { params: { id: string } }) {
   const router = useRouter()
   const [wo, setWo] = useState<WorkOrderDetail | null>(null)
   const [loading, setLoading] = useState(true)
   const [deleting, startDelete] = useTransition()
+  const [tab, setTab] = useState<Tab>('overview')
+  const [media, setMedia] = useState<MediaItem[]>([])
+  const [notes, setNotes] = useState<NoteItem[]>([])
+  const [mediaLoaded, setMediaLoaded] = useState(false)
 
   useEffect(() => {
     fetch(`/api/work-orders/${params.id}`)
@@ -57,6 +74,20 @@ export default function WorkOrderDetailPage({ params }: { params: { id: string }
       .then((data) => { setWo(data); setLoading(false) })
       .catch(() => setLoading(false))
   }, [params.id])
+
+  const loadMedia = useCallback(async () => {
+    const [mRes, nRes] = await Promise.all([
+      fetch(`/api/work-orders/${params.id}/media`),
+      fetch(`/api/work-orders/${params.id}/notes`),
+    ])
+    if (mRes.ok) setMedia(await mRes.json())
+    if (nRes.ok) setNotes(await nRes.json())
+    setMediaLoaded(true)
+  }, [params.id])
+
+  useEffect(() => {
+    if (tab === 'media' && !mediaLoaded) loadMedia()
+  }, [tab, mediaLoaded, loadMedia])
 
   function handleDelete() {
     if (!confirm('האם למחוק את פקודת העבודה? פעולה זו אינה הפיכה.')) return
@@ -78,9 +109,7 @@ export default function WorkOrderDetailPage({ params }: { params: { id: string }
     return (
       <div className="text-center py-20">
         <p className="text-muted mb-4">פקודת עבודה לא נמצאה</p>
-        <Link href="/dashboard/work-orders" className="text-sm text-[#6366f1] hover:underline">
-          חזרה לרשימה
-        </Link>
+        <Link href="/dashboard/work-orders" className="text-sm text-[#6366f1] hover:underline">חזרה לרשימה</Link>
       </div>
     )
   }
@@ -90,27 +119,30 @@ export default function WorkOrderDetailPage({ params }: { params: { id: string }
   return (
     <div className="max-w-4xl">
       {/* Breadcrumb */}
-      <div className="flex items-center gap-1.5 text-sm text-muted mb-6">
-        <Link href="/dashboard/work-orders" className="hover:text-[#e2e8f0] transition-colors">
-          פקודות עבודה
-        </Link>
+      <div className="flex items-center gap-1.5 text-sm text-muted mb-5">
+        <Link href="/dashboard/work-orders" className="hover:text-[#e2e8f0] transition-colors">פקודות עבודה</Link>
         <ChevronRight size={14} className="rotate-180" />
         <span className="text-[#e2e8f0] font-mono">{wo.workOrderNumber}</span>
       </div>
 
       {/* Header */}
-      <div className="flex flex-wrap items-start justify-between gap-4 mb-6">
+      <div className="flex flex-wrap items-start justify-between gap-4 mb-5">
         <div className="flex items-center gap-3 flex-wrap">
           <h1 className="text-2xl font-bold font-mono">{wo.workOrderNumber}</h1>
           <StatusBadge status={wo.status} />
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <Link
+            href={`/dashboard/diagnostics/new?workOrderId=${wo.id}&complaint=${encodeURIComponent(wo.complaint ?? '')}&vehicleId=${wo.vehicle.id}`}
+            className="flex items-center gap-1.5 px-3 py-2 text-sm text-[#6366f1] border border-[#6366f1]/30 rounded-lg hover:bg-[#6366f1]/10 transition-all"
+          >
+            <Brain size={14} />AI אבחון
+          </Link>
           <Link
             href={`/dashboard/work-orders/${wo.id}/edit`}
             className="flex items-center gap-1.5 px-3 py-2 text-sm text-muted border border-[#2e3147] rounded-lg hover:bg-[#252836] hover:text-[#e2e8f0] transition-all"
           >
-            <Pencil size={14} />
-            ערוך
+            <Pencil size={14} />ערוך
           </Link>
           <button
             onClick={handleDelete}
@@ -123,104 +155,165 @@ export default function WorkOrderDetailPage({ params }: { params: { id: string }
         </div>
       </div>
 
-      <div className="space-y-4">
-        {/* Customer & Vehicle */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div className="bg-surface border border-[#2e3147] rounded-xl p-5">
-            <div className="flex items-center gap-2 mb-4">
-              <User size={15} className="text-muted" />
-              <span className="text-xs font-semibold text-muted uppercase tracking-wide">לקוח</span>
-            </div>
-            <div className="space-y-3">
-              <InfoBox label="שם" value={wo.customer.name} />
-              <InfoBox label="טלפון" value={wo.customer.phone} />
-              {wo.customer.email && <InfoBox label="אימייל" value={wo.customer.email} />}
-            </div>
-          </div>
+      {/* Tabs */}
+      <div className="flex bg-[#1a1d27] border border-[#2e3147] rounded-lg p-1 gap-1 mb-5">
+        {TABS.map((t) => (
+          <button
+            key={t.id}
+            onClick={() => setTab(t.id)}
+            className={`flex items-center gap-1.5 flex-1 justify-center px-3 py-2 rounded-md text-sm font-medium transition-all ${
+              tab === t.id ? 'bg-[#6366f1] text-white' : 'text-[#8892a4] hover:text-[#e2e8f0]'
+            }`}
+          >
+            {t.icon}{t.label}
+          </button>
+        ))}
+      </div>
 
-          <div className="bg-surface border border-[#2e3147] rounded-xl p-5">
-            <div className="flex items-center gap-2 mb-4">
-              <Car size={15} className="text-muted" />
-              <span className="text-xs font-semibold text-muted uppercase tracking-wide">רכב</span>
+      {/* ── TAB: OVERVIEW ── */}
+      {tab === 'overview' && (
+        <div className="space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="bg-surface border border-[#2e3147] rounded-xl p-5">
+              <div className="flex items-center gap-2 mb-4">
+                <User size={15} className="text-muted" />
+                <span className="text-xs font-semibold text-muted uppercase tracking-wide">לקוח</span>
+              </div>
+              <div className="space-y-3">
+                <InfoBox label="שם" value={wo.customer.name} />
+                <InfoBox label="טלפון" value={wo.customer.phone} />
+                {wo.customer.email && <InfoBox label="אימייל" value={wo.customer.email} />}
+              </div>
             </div>
-            <div className="space-y-3">
-              <InfoBox label="לוחית רישוי" value={wo.vehicle.plate} />
-              <InfoBox label="יצרן ודגם" value={`${wo.vehicle.make} ${wo.vehicle.model} ${wo.vehicle.year}`} />
-              {wo.vehicle.color && <InfoBox label="צבע" value={wo.vehicle.color} />}
-              {wo.mileage && <InfoBox label="קילומטראז'" value={wo.mileage.toLocaleString('he-IL')} />}
-            </div>
-          </div>
-        </div>
-
-        {/* Complaint */}
-        <div className="bg-surface border border-[#2e3147] rounded-xl p-5">
-          <div className="text-xs font-semibold text-muted uppercase tracking-wide mb-3">תלונת לקוח</div>
-          <p className="text-sm leading-relaxed">{wo.complaint ?? '—'}</p>
-        </div>
-
-        {/* Diagnosis */}
-        <div className="bg-surface border border-[#2e3147] rounded-xl p-5">
-          <div className="text-xs font-semibold text-muted uppercase tracking-wide mb-3">אבחון טכנאי</div>
-          <p className="text-sm leading-relaxed">{wo.diagnosis ?? 'טרם הוזן אבחון'}</p>
-        </div>
-
-        {/* Work & Financial */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div className="bg-surface border border-[#2e3147] rounded-xl p-5">
-            <div className="flex items-center gap-2 mb-4">
-              <Wrench size={15} className="text-muted" />
-              <span className="text-xs font-semibold text-muted uppercase tracking-wide">פרטי עבודה</span>
-            </div>
-            <div className="space-y-3">
-              <InfoBox label="טכנאי אחראי" value={wo.assignedTechnician} />
-              <InfoBox label="שעות עבודה" value={`${wo.laborHours} שעות`} />
-              <InfoBox label="תעריף לשעה" value={fmt(wo.laborRate)} />
-            </div>
-          </div>
-
-          <div className="bg-surface border border-[#2e3147] rounded-xl p-5">
-            <div className="flex items-center gap-2 mb-4">
-              <Clock size={15} className="text-muted" />
-              <span className="text-xs font-semibold text-muted uppercase tracking-wide">סיכום כספי</span>
-            </div>
-            <div className="space-y-2">
-              {[
-                { label: 'עבודה', value: fmt(laborTotal) },
-                { label: 'חלקים', value: fmt(wo.partsTotal) },
-              ].map((r) => (
-                <div key={r.label} className="flex justify-between text-sm">
-                  <span className="text-muted">{r.label}</span>
-                  <span>{r.value}</span>
-                </div>
-              ))}
-              <div className="border-t border-[#2e3147] pt-2 mt-2 flex justify-between items-center">
-                <span className="text-sm font-semibold">סה&#34;כ</span>
-                <span className="text-lg font-bold text-[#6366f1]">{fmt(wo.totalPrice)}</span>
+            <div className="bg-surface border border-[#2e3147] rounded-xl p-5">
+              <div className="flex items-center gap-2 mb-4">
+                <Car size={15} className="text-muted" />
+                <span className="text-xs font-semibold text-muted uppercase tracking-wide">רכב</span>
+              </div>
+              <div className="space-y-3">
+                <InfoBox label="לוחית רישוי" value={wo.vehicle.plate} />
+                <InfoBox label="יצרן ודגם" value={`${wo.vehicle.make} ${wo.vehicle.model} ${wo.vehicle.year}`} />
+                {wo.vehicle.color && <InfoBox label="צבע" value={wo.vehicle.color} />}
+                {wo.mileage && <InfoBox label="קילומטראז׳" value={wo.mileage.toLocaleString('he-IL')} />}
               </div>
             </div>
           </div>
-        </div>
 
-        {/* Notes */}
-        {wo.notes && (
           <div className="bg-surface border border-[#2e3147] rounded-xl p-5">
-            <div className="text-xs font-semibold text-muted uppercase tracking-wide mb-3">הערות</div>
-            <p className="text-sm text-muted leading-relaxed">{wo.notes}</p>
+            <div className="text-xs font-semibold text-muted uppercase tracking-wide mb-3">תלונת לקוח</div>
+            <p className="text-sm leading-relaxed">{wo.complaint ?? '—'}</p>
           </div>
-        )}
 
-        {/* Status actions */}
-        <div className="bg-surface border border-[#2e3147] rounded-xl p-5">
-          <div className="text-xs font-semibold text-muted uppercase tracking-wide mb-4">עדכון סטטוס</div>
-          <StatusActions workOrderId={wo.id} currentStatus={wo.status} />
-        </div>
+          <div className="bg-surface border border-[#2e3147] rounded-xl p-5">
+            <div className="text-xs font-semibold text-muted uppercase tracking-wide mb-3">אבחון טכנאי</div>
+            <p className="text-sm leading-relaxed">{wo.diagnosis ?? 'טרם הוזן אבחון'}</p>
+          </div>
 
-        {/* Meta */}
-        <div className="flex gap-6 text-xs text-muted px-1">
-          <span>נוצר: {fmtDate(wo.createdAt)}</span>
-          <span>עודכן: {fmtDate(wo.updatedAt)}</span>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="bg-surface border border-[#2e3147] rounded-xl p-5">
+              <div className="flex items-center gap-2 mb-4">
+                <Wrench size={15} className="text-muted" />
+                <span className="text-xs font-semibold text-muted uppercase tracking-wide">פרטי עבודה</span>
+              </div>
+              <div className="space-y-3">
+                <InfoBox label="טכנאי אחראי" value={wo.assignedTechnician} />
+                <InfoBox label="שעות עבודה" value={`${wo.laborHours} שעות`} />
+                <InfoBox label="תעריף לשעה" value={fmt(wo.laborRate)} />
+              </div>
+            </div>
+            <div className="bg-surface border border-[#2e3147] rounded-xl p-5">
+              <div className="flex items-center gap-2 mb-4">
+                <Clock size={15} className="text-muted" />
+                <span className="text-xs font-semibold text-muted uppercase tracking-wide">סיכום כספי</span>
+              </div>
+              <div className="space-y-2">
+                {[
+                  { label: 'עבודה', value: fmt(laborTotal) },
+                  { label: 'חלקים', value: fmt(wo.partsTotal) },
+                ].map((r) => (
+                  <div key={r.label} className="flex justify-between text-sm">
+                    <span className="text-muted">{r.label}</span>
+                    <span>{r.value}</span>
+                  </div>
+                ))}
+                <div className="border-t border-[#2e3147] pt-2 mt-2 flex justify-between items-center">
+                  <span className="text-sm font-semibold">סה&quot;כ</span>
+                  <span className="text-lg font-bold text-[#6366f1]">{fmt(wo.totalPrice)}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {wo.notes && (
+            <div className="bg-surface border border-[#2e3147] rounded-xl p-5">
+              <div className="text-xs font-semibold text-muted uppercase tracking-wide mb-3">הערות</div>
+              <p className="text-sm text-muted leading-relaxed">{wo.notes}</p>
+            </div>
+          )}
+
+          <div className="bg-surface border border-[#2e3147] rounded-xl p-5">
+            <div className="text-xs font-semibold text-muted uppercase tracking-wide mb-4">עדכון סטטוס</div>
+            <StatusActions workOrderId={wo.id} currentStatus={wo.status} />
+          </div>
+
+          <div className="flex gap-6 text-xs text-muted px-1">
+            <span>נוצר: {fmtDate(wo.createdAt)}</span>
+            <span>עודכן: {fmtDate(wo.updatedAt)}</span>
+          </div>
         </div>
-      </div>
+      )}
+
+      {/* ── TAB: MEDIA & NOTES ── */}
+      {tab === 'media' && (
+        <div className="space-y-5">
+          {/* Upload */}
+          <div className="bg-[#1a1d27] border border-[#2e3147] rounded-xl p-5">
+            <h2 className="text-sm font-semibold text-[#8892a4] uppercase tracking-wide mb-4">העלאת קבצים</h2>
+            <FileUploader entityType="workOrder" entityId={wo.id} onUpload={loadMedia} />
+          </div>
+
+          {/* Gallery */}
+          <div className="bg-[#1a1d27] border border-[#2e3147] rounded-xl p-5">
+            <h2 className="text-sm font-semibold text-[#8892a4] uppercase tracking-wide mb-4">
+              קבצים מצורפים ({media.length})
+            </h2>
+            {!mediaLoaded ? (
+              <div className="flex justify-center py-8"><Loader2 size={20} className="animate-spin text-muted" /></div>
+            ) : (
+              <MediaGallery
+                files={media}
+                onDelete={(id) => setMedia((prev) => prev.filter((f) => f.id !== id))}
+              />
+            )}
+          </div>
+
+          {/* Notes */}
+          <div className="bg-[#1a1d27] border border-[#2e3147] rounded-xl p-5">
+            <h2 className="text-sm font-semibold text-[#8892a4] uppercase tracking-wide mb-4">
+              פתקי טכנאי ({notes.length})
+            </h2>
+            <NoteTimeline
+              notes={notes}
+              onDelete={(id) => setNotes((prev) => prev.filter((n) => n.id !== id))}
+            />
+          </div>
+
+          <NoteForm workOrderId={wo.id} onAdd={loadMedia} />
+        </div>
+      )}
+
+      {/* ── TAB: COMMUNICATION ── */}
+      {tab === 'communication' && (
+        <MessageComposer
+          wo={{
+            workOrderNumber: wo.workOrderNumber,
+            status: wo.status,
+            totalPrice: wo.totalPrice,
+            customer: wo.customer,
+            vehicle: wo.vehicle,
+          }}
+        />
+      )}
     </div>
   )
 }

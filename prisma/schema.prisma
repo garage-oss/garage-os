@@ -55,6 +55,18 @@ enum QuoteStatus {
   REJECTED
 }
 
+enum NoteVisibility {
+  INTERNAL
+  CUSTOMER
+}
+
+enum DiagnosticUrgency {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
 model User {
   id        String   @id @default(cuid())
   email     String   @unique
@@ -81,48 +93,53 @@ model Customer {
 }
 
 model Vehicle {
-  id           String        @id @default(cuid())
-  plate        String        @unique
-  make         String
-  model        String
-  year         Int
-  color        String?
-  vin          String?
-  engine       String?
-  fuelType     FuelType?
-  transmission Transmission?
-  mileage      Int?
-  notes        String?
-  customerId   String
-  customer     Customer      @relation(fields: [customerId], references: [id])
-  workOrders   WorkOrder[]
-  quotes       Quote[]
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
+  id                  String              @id @default(cuid())
+  plate               String              @unique
+  make                String
+  model               String
+  year                Int
+  color               String?
+  vin                 String?
+  engine              String?
+  fuelType            FuelType?
+  transmission        Transmission?
+  mileage             Int?
+  notes               String?
+  customerId          String
+  customer            Customer            @relation(fields: [customerId], references: [id])
+  workOrders          WorkOrder[]
+  quotes              Quote[]
+  media               MediaFile[]
+  diagnosticSessions  DiagnosticSession[]
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
 }
 
 model WorkOrder {
-  id                 String          @id @default(cuid())
-  workOrderNumber    String          @unique
-  status             WorkOrderStatus @default(PENDING)
-  complaint          String?
-  diagnosis          String?
-  laborHours         Decimal         @default(0) @db.Decimal(8, 2)
-  laborRate          Decimal         @default(150) @db.Decimal(10, 2)
-  partsTotal         Decimal         @default(0) @db.Decimal(10, 2)
-  totalPrice         Decimal         @default(0) @db.Decimal(10, 2)
-  assignedTechnician String?
-  mileage            Int?
-  notes              String?
-  customerId         String
-  customer           Customer        @relation(fields: [customerId], references: [id])
-  vehicleId          String
-  vehicle            Vehicle         @relation(fields: [vehicleId], references: [id])
-  items              WorkOrderItem[]
-  invoice            Invoice?
-  quote              Quote?
-  createdAt          DateTime        @default(now())
-  updatedAt          DateTime        @updatedAt
+  id                  String              @id @default(cuid())
+  workOrderNumber     String              @unique
+  status              WorkOrderStatus     @default(PENDING)
+  complaint           String?
+  diagnosis           String?
+  laborHours          Decimal             @default(0) @db.Decimal(8, 2)
+  laborRate           Decimal             @default(150) @db.Decimal(10, 2)
+  partsTotal          Decimal             @default(0) @db.Decimal(10, 2)
+  totalPrice          Decimal             @default(0) @db.Decimal(10, 2)
+  assignedTechnician  String?
+  mileage             Int?
+  notes               String?
+  customerId          String
+  customer            Customer            @relation(fields: [customerId], references: [id])
+  vehicleId           String
+  vehicle             Vehicle             @relation(fields: [vehicleId], references: [id])
+  items               WorkOrderItem[]
+  invoice             Invoice?
+  quote               Quote?
+  techNotes           TechnicianNote[]
+  media               MediaFile[]
+  diagnosticSessions  DiagnosticSession[]
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
 }
 
 model WorkOrderItem {
@@ -180,24 +197,25 @@ model StockMovement {
 }
 
 model Quote {
-  id            String      @id @default(cuid())
-  quoteNumber   String      @unique
-  status        QuoteStatus @default(DRAFT)
-  laborHours    Decimal     @default(0) @db.Decimal(8, 2)
-  laborRate     Decimal     @default(150) @db.Decimal(10, 2)
-  partsTotal    Decimal     @default(0) @db.Decimal(10, 2)
-  totalPrice    Decimal     @default(0) @db.Decimal(10, 2)
-  notes         String?
-  validUntil    DateTime?
-  customerId    String
-  customer      Customer    @relation(fields: [customerId], references: [id])
-  vehicleId     String?
-  vehicle       Vehicle?    @relation(fields: [vehicleId], references: [id])
-  workOrderId   String?     @unique
-  workOrder     WorkOrder?  @relation(fields: [workOrderId], references: [id])
-  items         QuoteItem[]
-  createdAt     DateTime    @default(now())
-  updatedAt     DateTime    @updatedAt
+  id          String      @id @default(cuid())
+  quoteNumber String      @unique
+  status      QuoteStatus @default(DRAFT)
+  laborHours  Decimal     @default(0) @db.Decimal(8, 2)
+  laborRate   Decimal     @default(150) @db.Decimal(10, 2)
+  partsTotal  Decimal     @default(0) @db.Decimal(10, 2)
+  totalPrice  Decimal     @default(0) @db.Decimal(10, 2)
+  notes       String?
+  validUntil  DateTime?
+  customerId  String
+  customer    Customer    @relation(fields: [customerId], references: [id])
+  vehicleId   String?
+  vehicle     Vehicle?    @relation(fields: [vehicleId], references: [id])
+  workOrderId String?     @unique
+  workOrder   WorkOrder?  @relation(fields: [workOrderId], references: [id])
+  items       QuoteItem[]
+  media       MediaFile[]
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
 }
 
 model QuoteItem {
@@ -208,6 +226,47 @@ model QuoteItem {
   total       Decimal @db.Decimal(10, 2)
   quoteId     String
   quote       Quote   @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+}
+
+model MediaFile {
+  id           String     @id @default(cuid())
+  filename     String
+  originalName String
+  mimeType     String
+  size         Int
+  url          String
+  workOrderId  String?
+  workOrder    WorkOrder? @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
+  vehicleId    String?
+  vehicle      Vehicle?   @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  quoteId      String?
+  quote        Quote?     @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  uploadedBy   String?
+  createdAt    DateTime   @default(now())
+}
+
+model TechnicianNote {
+  id          String         @id @default(cuid())
+  content     String
+  visibility  NoteVisibility @default(INTERNAL)
+  authorName  String?
+  workOrderId String
+  workOrder   WorkOrder      @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
+  createdAt   DateTime       @default(now())
+}
+
+model DiagnosticSession {
+  id          String             @id @default(cuid())
+  complaint   String
+  obdCodes    String?
+  symptoms    String?
+  aiResponse  String?
+  urgency     DiagnosticUrgency  @default(MEDIUM)
+  vehicleId   String?
+  vehicle     Vehicle?           @relation(fields: [vehicleId], references: [id])
+  workOrderId String?
+  workOrder   WorkOrder?         @relation(fields: [workOrderId], references: [id])
+  createdAt   DateTime           @default(now())
 }
 
 model Invoice {

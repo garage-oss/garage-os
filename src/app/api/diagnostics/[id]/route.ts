@@ -1,0 +1,8 @@
+import { NextRequest, NextResponse } from 'next/server'
+import { getDiagnosticSession } from '@/lib/diagnostics'
+
+export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
+  const session = await getDiagnosticSession(params.id)
+  if (!session) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  return NextResponse.json({ ...session, createdAt: session.createdAt.toISOString() })
+}
