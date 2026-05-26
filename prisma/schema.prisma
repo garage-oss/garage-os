@@ -96,6 +96,18 @@ enum DiagnosticUrgency {
   CRITICAL
 }
 
+enum NotificationType {
+  QUOTE_APPROVED
+  QUOTE_REJECTED
+  LOW_STOCK
+  WORK_ORDER_ASSIGNED
+  WORK_ORDER_STATUS_CHANGED
+  WORK_ORDER_COMPLETED
+  MEMBER_INVITED
+  MEMBER_JOINED
+  SYSTEM
+}
+
 // ─── Org / Auth ───────────────────────────────────────────────────────────────
 
 model Organization {
@@ -115,6 +127,7 @@ model Organization {
   trialEndsAt      DateTime?
   billingEmail     String?
   stripeCustomerId String?
+  settings         Json      @default("{}")
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 
@@ -129,6 +142,7 @@ model Organization {
   diagnosticSessions DiagnosticSession[]
   invoices           Invoice[]
   auditLogs          AuditLog[]
+  notifications      Notification[]
 }
 
 model Membership {
@@ -172,11 +186,34 @@ model User {
   phone        String?
   department   String?
   position     String?
-  isActive     Boolean      @default(true)
-  lastLoginAt  DateTime?
-  memberships  Membership[]
-  createdAt    DateTime     @default(now())
-  updatedAt    DateTime     @updatedAt
+  isActive      Boolean        @default(true)
+  lastLoginAt   DateTime?
+  memberships   Membership[]
+  notifications Notification[]
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+}
+
+// ─── Notifications ───────────────────────────────────────────────────────────
+
+model Notification {
+  id             String           @id @default(cuid())
+  organizationId String
+  organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type           NotificationType
+  title          String
+  message        String
+  entityType     String?
+  entityId       String?
+  actionUrl      String?
+  read           Boolean          @default(false)
+  readAt         DateTime?
+  createdAt      DateTime         @default(now())
+
+  @@index([userId, read, createdAt(sort: Desc)])
+  @@index([organizationId, createdAt(sort: Desc)])
 }
 
 // ─── Audit Log ────────────────────────────────────────────────────────────────

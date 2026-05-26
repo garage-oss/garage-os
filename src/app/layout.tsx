@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next'
 import { Rubik } from 'next/font/google'
 import './globals.css'
 import { Providers } from './providers'
+import { ServiceWorkerRegistration } from '@/components/ServiceWorkerRegistration'
 
 const rubik = Rubik({
   subsets:  ['latin', 'hebrew'],
@@ -69,6 +70,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="he" dir="rtl" className={rubik.variable}>
       <body className="font-sans antialiased bg-bg text-text-base">
         <Providers>{children}</Providers>
+        <ServiceWorkerRegistration />
       </body>
     </html>
   )

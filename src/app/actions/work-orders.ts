@@ -6,6 +6,15 @@ import { generateWorkOrderNumber } from '@/lib/work-orders'
 import { revalidatePath } from 'next/cache'
 import { WorkOrderStatus } from '@prisma/client'
 import { createAuditLog } from '@/lib/audit'
+import { notifyAdmins } from '@/lib/notifications'
+
+const STATUS_LABELS: Record<WorkOrderStatus, string> = {
+  PENDING:        'ממתין',
+  IN_PROGRESS:    'בטיפול',
+  WAITING_PARTS:  'ממתין לחלקים',
+  COMPLETED:      'הושלם',
+  CANCELLED:      'בוטל',
+}
 
 export type ActionResult = { error: string } | { success: true; id: string }
 
@@ -84,10 +93,34 @@ export async function updateWorkOrder(id: string, formData: FormData): Promise<A
 }
 
 export async function updateWorkOrderStatus(id: string, status: WorkOrderStatus): Promise<void> {
+  // Fetch org context + current WO state in parallel
+  const [{ orgId, userId }, wo] = await Promise.all([
+    requireOrg(),
+    prisma.workOrder.findUnique({
+      where:  { id },
+      select: { workOrderNumber: true, organizationId: true },
+    }),
+  ])
+
   await prisma.workOrder.update({ where: { id }, data: { status } })
   revalidatePath('/dashboard/work-orders')
   revalidatePath(`/dashboard/work-orders/${id}`)
   revalidatePath('/dashboard')
+
+  // Fire audit log
+  void createAuditLog({ orgId, userId, action: 'UPDATE', entityType: 'workOrder', entityId: id, entityLabel: wo?.workOrderNumber, afterData: { status } })
+
+  // Fire notification to all OWNER + MANAGER members
+  const label   = wo?.workOrderNumber ?? id
+  const typeKey = status === 'COMPLETED' ? 'WORK_ORDER_COMPLETED' : 'WORK_ORDER_STATUS_CHANGED'
+  void notifyAdmins(orgId, {
+    type:       typeKey,
+    title:      status === 'COMPLETED' ? `פקודת עבודה ${label} הושלמה` : `סטטוס עודכן: ${label}`,
+    message:    `הסטטוס שונה ל: ${STATUS_LABELS[status] ?? status}`,
+    entityType: 'workOrder',
+    entityId:   id,
+    actionUrl:  `/dashboard/work-orders/${id}`,
+  })
 }
 
 export async function deleteWorkOrder(id: string): Promise<{ error?: string }> {

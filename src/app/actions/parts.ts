@@ -4,6 +4,8 @@ import { revalidatePath } from 'next/cache'
 import { prisma } from '@/lib/prisma'
 import { requireOrg } from '@/lib/org'
 import { MovementType } from '@prisma/client'
+import { notifyAdmins } from '@/lib/notifications'
+import { getOrgSettings } from '@/lib/org-settings'
 
 export type ActionResult = { error: string } | { success: true; id: string }
 
@@ -131,6 +133,21 @@ export async function adjustStock(
 
     revalidatePath(`/dashboard/inventory/${partId}`)
     revalidatePath('/dashboard/inventory')
+
+    // Low-stock notification (fire-and-forget, uses org settings threshold)
+    const settings = await getOrgSettings(orgId).catch(() => null)
+    const threshold = settings?.lowStockThreshold ?? 5
+    if (settings?.notifyLowStock !== false && newQty <= threshold && newQty >= 0) {
+      void notifyAdmins(orgId, {
+        type:       'LOW_STOCK',
+        title:      `מלאי נמוך: ${part.name}`,
+        message:    `נותרו ${newQty} יחידות (סף: ${threshold}). מומלץ להזמין.`,
+        entityType: 'part',
+        entityId:   partId,
+        actionUrl:  `/dashboard/inventory/${partId}`,
+      })
+    }
+
     return { success: true, id: partId }
   } catch {
     return { error: 'שגיאה בעדכון המלאי' }

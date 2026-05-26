@@ -32,13 +32,21 @@ function send(entry: LogEntry): void {
   if (IS_PROD) {
     // Structured JSON — machine-readable, works with log aggregators
     const output = JSON.stringify(entry)
-    if (entry.level === 'error') console.error(output)
-    else if (entry.level === 'warn') console.warn(output)
-    else console.log(output)
-
-    // TODO: ship to external collector, e.g.:
+    if (entry.level === 'error') {
+      console.error(output)
+      // Forward to Sentry — no-op when SENTRY_DSN is not set
+      void import('@/lib/sentry')
+        .then(({ captureException }) =>
+          captureException(entry.error ?? new Error(entry.message), entry.context)
+        )
+        .catch(() => {})
+    } else if (entry.level === 'warn') {
+      console.warn(output)
+    } else {
+      console.log(output)
+    }
+    // TODO: ship to additional collector: Axiom, Datadog, Logtail
     // await axiom.ingest('garage-os', [entry])
-    // Sentry.captureException(entry.error, { extra: entry.context })
   } else {
     // Pretty-print for developer ergonomics
     const ts    = new Date(entry.timestamp).toLocaleTimeString()

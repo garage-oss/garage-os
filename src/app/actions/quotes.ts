@@ -5,6 +5,7 @@ import { prisma } from '@/lib/prisma'
 import { requireOrg } from '@/lib/org'
 import { QuoteStatus } from '@prisma/client'
 import { generateQuoteNumber } from '@/lib/quotes'
+import { notifyAdmins } from '@/lib/notifications'
 
 export type ActionResult = { error: string } | { success: true; id: string }
 
@@ -108,9 +109,29 @@ export async function updateQuote(id: string, formData: FormData): Promise<Actio
 }
 
 export async function updateQuoteStatus(id: string, status: QuoteStatus): Promise<void> {
+  const [{ orgId }, quote] = await Promise.all([
+    requireOrg(),
+    prisma.quote.findUnique({ where: { id }, select: { quoteNumber: true, organizationId: true } }),
+  ])
+
   await prisma.quote.update({ where: { id }, data: { status } })
   revalidatePath(`/dashboard/quotes/${id}`)
   revalidatePath('/dashboard/quotes')
+
+  // Notify admins on meaningful status changes
+  if (status === 'APPROVED' || status === 'REJECTED') {
+    const label = quote?.quoteNumber ?? id
+    void notifyAdmins(orgId, {
+      type:       status === 'APPROVED' ? 'QUOTE_APPROVED' : 'QUOTE_REJECTED',
+      title:      status === 'APPROVED' ? `הצעת מחיר ${label} אושרה` : `הצעת מחיר ${label} נדחתה`,
+      message:    status === 'APPROVED'
+        ? 'ניתן לפתוח פקודת עבודה על בסיס ההצעה.'
+        : 'הלקוח דחה את ההצעה.',
+      entityType: 'quote',
+      entityId:   id,
+      actionUrl:  `/dashboard/quotes/${id}`,
+    })
+  }
 }
 
 export async function deleteQuote(id: string): Promise<{ error?: string }> {

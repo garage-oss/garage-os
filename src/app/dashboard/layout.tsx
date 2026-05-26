@@ -22,7 +22,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
         userEmail={session.user?.email ?? undefined}
       />
       <div className="flex-1 flex flex-col ms-[220px] min-w-0">
-        <TopBar user={session.user} />
+        <TopBar user={{ ...session.user, id: (session.user as { id?: string }).id }} />
         <main className="flex-1 p-6 lg:p-8 overflow-x-hidden">{children}</main>
       </div>
     </div>

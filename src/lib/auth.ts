@@ -3,9 +3,30 @@ import CredentialsProvider from 'next-auth/providers/credentials'
 import bcrypt from 'bcryptjs'
 import { prisma } from './prisma'
 
+const isHttps = process.env.NEXTAUTH_URL?.startsWith('https://')
+
 export const authOptions: NextAuthOptions = {
   session: { strategy: 'jwt' },
-  pages: { signIn: '/login' },
+  pages:   { signIn: '/login' },
+
+  // Explicitly secure cookies in production (HTTPS only).
+  // NextAuth infers this from NEXTAUTH_URL automatically, but being explicit
+  // prevents accidental insecure cookies on staging environments.
+  useSecureCookies: isHttps,
+  cookies: isHttps ? {
+    sessionToken: {
+      name:    '__Secure-next-auth.session-token',
+      options: { httpOnly: true, sameSite: 'lax', path: '/', secure: true },
+    },
+    callbackUrl: {
+      name:    '__Secure-next-auth.callback-url',
+      options: { httpOnly: false, sameSite: 'lax', path: '/', secure: true },
+    },
+    csrfToken: {
+      name:    '__Host-next-auth.csrf-token',
+      options: { httpOnly: true, sameSite: 'lax', path: '/', secure: true },
+    },
+  } : undefined,
   providers: [
     CredentialsProvider({
       name: 'credentials',
