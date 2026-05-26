@@ -1,7 +1,7 @@
-import { requireOrg } from '@/lib/org'
-import { prisma } from '@/lib/prisma'
-import { MappingEditor } from '@/components/migration/MappingEditor'
-import type { MappingPreset } from '@/lib/migration/types'
+import { requireOrg }           from '@/lib/org'
+import { prisma }               from '@/lib/prisma'
+import { MappingPageClient }    from '@/components/migration/MappingPageClient'
+import type { MappingPreset }   from '@/lib/migration/types'
 
 export default async function MappingPage() {
   const ctx = await requireOrg()
@@ -11,15 +11,15 @@ export default async function MappingPage() {
     orderBy: { createdAt: 'asc' },
   })
 
-  const presets: MappingPreset[] = dbPresets.map((p) => ({
+  const presets: MappingPreset[] = dbPresets.map(p => ({
     id:                p.id,
     name:              p.name,
     sourceTable:       p.sourceTable,
     targetEntity:      p.targetEntity as MappingPreset['targetEntity'],
     columnMappings:    p.columnMappings as MappingPreset['columnMappings'],
-    filterSql:         p.filterSql ?? undefined,
+    filterSql:         p.filterSql         ?? undefined,
     incrementalColumn: p.incrementalColumn ?? undefined,
   }))
 
-  return <MappingEditor initialPresets={presets} />
+  return <MappingPageClient initialPresets={presets} />
 }
