@@ -6,6 +6,8 @@ import { Loader2 } from 'lucide-react'
 import { createVehicle, updateVehicle } from '@/app/actions/vehicles'
 import { FuelType, Transmission } from '@prisma/client'
 import { FUEL_LABELS, TRANSMISSION_LABELS } from '@/lib/vehicles'
+import { PlateAutofill } from '@/components/vehicle/PlateAutofill'
+import type { VehicleLookupResult } from '@/lib/vehicle-lookup'
 
 interface Customer { id: string; name: string; phone: string }
 
@@ -32,6 +34,37 @@ export function VehicleForm({ customers, mode = 'create', vehicle, defaultCustom
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [error, setError] = useState('')
+
+  // Controlled state for autofill-able fields
+  const [plate,    setPlate]    = useState(vehicle?.plate    ?? '')
+  const [make,     setMake]     = useState(vehicle?.make     ?? '')
+  const [model,    setModel]    = useState(vehicle?.model    ?? '')
+  const [year,     setYear]     = useState<number>(vehicle?.year ?? currentYear)
+  const [color,    setColor]    = useState(vehicle?.color    ?? '')
+  const [engine,   setEngine]   = useState(vehicle?.engine   ?? '')
+  const [fuelType, setFuelType] = useState<FuelType | ''>(vehicle?.fuelType ?? '')
+
+  function handleAutofill(result: VehicleLookupResult) {
+    if (result.make)     setMake(result.make)
+    if (result.model)    setModel(result.model)
+    if (result.year)     setYear(result.year)
+    if (result.fuelType) setFuelType(result.fuelType)
+    if (result.color)    setColor(prev => prev || result.color!)  // don't overwrite if user typed
+    if (result.engineVolume) {
+      // convert cc to litre string like "2.0L"
+      const litres = (result.engineVolume / 1000).toFixed(1)
+      setEngine(prev => prev || `${litres}L`)
+    }
+  }
+
+  function handleClearAutofill() {
+    setMake('')
+    setModel('')
+    setYear(currentYear)
+    setFuelType('')
+    setColor('')
+    setEngine('')
+  }
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -76,29 +109,75 @@ export function VehicleForm({ customers, mode = 'create', vehicle, defaultCustom
       <div className={SECTION}>
         <h3 className="text-xs font-semibold text-[#8892a4] uppercase tracking-wider mb-4">פרטי רכב</h3>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div>
+          <div className="sm:col-span-2">
             <label className={LABEL}>לוחית רישוי *</label>
-            <input name="plate" required defaultValue={vehicle?.plate} placeholder="123-45-678" className={INPUT} />
+            <PlateAutofill
+              value={plate}
+              onChange={setPlate}
+              onResult={handleAutofill}
+              onClear={handleClearAutofill}
+              disabled={isPending}
+              debounceMs={2000}
+            />
+            {/* Hidden input so FormData picks up the plate value */}
+            <input type="hidden" name="plate" value={plate} />
           </div>
           <div>
             <label className={LABEL}>יצרן *</label>
-            <input name="make" required defaultValue={vehicle?.make} placeholder="Toyota" className={INPUT} />
+            <input
+              name="make"
+              required
+              value={make}
+              onChange={e => setMake(e.target.value)}
+              placeholder="Toyota"
+              className={INPUT}
+            />
           </div>
           <div>
             <label className={LABEL}>דגם *</label>
-            <input name="model" required defaultValue={vehicle?.model} placeholder="Corolla" className={INPUT} />
+            <input
+              name="model"
+              required
+              value={model}
+              onChange={e => setModel(e.target.value)}
+              placeholder="Corolla"
+              className={INPUT}
+            />
           </div>
           <div>
             <label className={LABEL}>שנת ייצור *</label>
-            <input name="year" type="number" required defaultValue={vehicle?.year ?? currentYear} min={1980} max={currentYear + 1} className={INPUT} />
+            <input
+              name="year"
+              type="number"
+              required
+              value={year}
+              onChange={e => setYear(Number(e.target.value))}
+              min={1980}
+              max={currentYear + 1}
+              className={INPUT}
+            />
           </div>
           <div>
             <label className={LABEL}>צבע</label>
-            <input name="color" defaultValue={vehicle?.color ?? ''} placeholder="לבן" className={INPUT} />
+            <input
+              name="color"
+              value={color}
+              onChange={e => setColor(e.target.value)}
+              placeholder="לבן"
+              className={INPUT}
+            />
           </div>
           <div>
             <label className={LABEL}>קילומטראז&#39;</label>
-            <input name="mileage" type="number" defaultValue={vehicle?.mileage ?? ''} min={0} step={100} placeholder="45000" className={INPUT} />
+            <input
+              name="mileage"
+              type="number"
+              defaultValue={vehicle?.mileage ?? ''}
+              min={0}
+              step={100}
+              placeholder="45000"
+              className={INPUT}
+            />
           </div>
           <div className="sm:col-span-2">
             <label className={LABEL}>מספר שלדה (VIN)</label>
@@ -113,11 +192,22 @@ export function VehicleForm({ customers, mode = 'create', vehicle, defaultCustom
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div>
             <label className={LABEL}>מנוע</label>
-            <input name="engine" defaultValue={vehicle?.engine ?? ''} placeholder="2.0L" className={INPUT} />
+            <input
+              name="engine"
+              value={engine}
+              onChange={e => setEngine(e.target.value)}
+              placeholder="2.0L"
+              className={INPUT}
+            />
           </div>
           <div>
             <label className={LABEL}>סוג דלק</label>
-            <select name="fuelType" defaultValue={vehicle?.fuelType ?? ''} className={INPUT}>
+            <select
+              name="fuelType"
+              value={fuelType}
+              onChange={e => setFuelType(e.target.value as FuelType | '')}
+              className={INPUT}
+            >
               <option value="">בחר...</option>
               {(Object.keys(FUEL_LABELS) as FuelType[]).map(k => (
                 <option key={k} value={k}>{FUEL_LABELS[k]}</option>

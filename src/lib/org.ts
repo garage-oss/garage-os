@@ -25,6 +25,14 @@ export const getOrgContext = cache(async (): Promise<OrgContext | null> => {
   const session = await getServerSession(authOptions)
   if (!session?.user?.id) return null
 
+  // Guard against stale sessions whose userId was wiped (e.g. after db:seed).
+  // Without this the user gets stuck in an onboarding → FK error loop.
+  const userExists = await prisma.user.findUnique({
+    where:  { id: session.user.id },
+    select: { id: true },
+  })
+  if (!userExists) return null
+
   const membership = await prisma.membership.findFirst({
     where: { userId: session.user.id, isActive: true },
     include: {
@@ -47,10 +55,31 @@ export const getOrgContext = cache(async (): Promise<OrgContext | null> => {
   }
 })
 
-/** Redirect to /onboarding if user has no active org membership. */
+/**
+ * Redirect to /onboarding if the user has no active org membership.
+ * Redirect to /api/auth/signout if the session is completely stale (user
+ * deleted or wiped by db:seed) — avoids an infinite onboarding → FK-error loop.
+ */
 export async function requireOrg(): Promise<OrgContext> {
+  const session = await getServerSession(authOptions)
+
+  // No session at all → send to login
+  if (!session?.user?.id) redirect('/login')
+
   const ctx = await getOrgContext()
-  if (!ctx) redirect('/onboarding')
+
+  // getOrgContext returns null for two reasons:
+  //   1. User exists but has no org → send to onboarding
+  //   2. User ID in session doesn't exist in DB (stale session) → force sign-out
+  if (!ctx) {
+    const userExists = await prisma.user.findUnique({
+      where:  { id: session.user.id },
+      select: { id: true },
+    })
+    if (!userExists) redirect('/api/auth/signout?callbackUrl=/login')
+    redirect('/onboarding')
+  }
+
   return ctx
 }
 

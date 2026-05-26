@@ -590,6 +590,21 @@ model PaymentLink {
   @@index([token])
 }
 
+// ─── Israeli Vehicle Registry Cache ──────────────────────────────────────────
+//
+// Caches results from https://data.gov.il/dataset/ovdim so we don't hammer
+// the government API on every keypress.  TTL = 30 days (checked at read time).
+
+model VehicleLookupCache {
+  id        String   @id @default(cuid())
+  plate     String   @unique   // normalized: digits only, no dashes
+  data      Json               // VehicleLookupResult
+  source    String   @default("gov_il")
+  fetchedAt DateTime @default(now())
+
+  @@index([plate])
+}
+
 // ─── Staff Clock Entries ──────────────────────────────────────────────────────
 
 model ClockEntry {

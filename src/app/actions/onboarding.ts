@@ -21,6 +21,18 @@ export async function createOrganization(formData: FormData): Promise<{ error?: 
   if (!name) return { error: 'שם המוסך הוא שדה חובה' }
 
   try {
+    // Verify the session user actually exists in the DB.
+    // After a db:seed wipe the browser may hold a stale session with a
+    // userId that no longer exists — catch it here before any FK writes.
+    const userExists = await prisma.user.findUnique({
+      where:  { id: session.user.id },
+      select: { id: true },
+    })
+    if (!userExists) {
+      // The session is stale — force a sign-out redirect
+      redirect('/api/auth/signout?callbackUrl=/login')
+    }
+
     // Check user doesn't already have an org
     const existing = await prisma.membership.findFirst({
       where: { userId: session.user.id },

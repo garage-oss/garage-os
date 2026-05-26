@@ -1,9 +1,10 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import { useState, useTransition, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import { Loader2 } from 'lucide-react'
+import { Loader2, Search, CheckCircle } from 'lucide-react'
 import { createWorkOrder, updateWorkOrder } from '@/app/actions/work-orders'
+import type { VehicleLookupResult } from '@/lib/vehicle-lookup'
 
 interface Customer { id: string; name: string; phone: string }
 interface Vehicle { id: string; plate: string; make: string; model: string; year: number; customerId: string }
@@ -38,8 +39,16 @@ export function WorkOrderForm({ customers, vehicles, mode = 'create', workOrder 
   const [isPending, startTransition] = useTransition()
   const [error, setError] = useState('')
   const [selectedCustomerId, setSelectedCustomerId] = useState(workOrder?.customerId ?? '')
+  const [selectedVehicleId,  setSelectedVehicleId]  = useState(workOrder?.vehicleId  ?? '')
   const [laborHours, setLaborHours] = useState(workOrder?.laborHours ?? 0)
-  const [laborRate, setLaborRate] = useState(workOrder?.laborRate ?? 150)
+  const [laborRate,  setLaborRate]  = useState(workOrder?.laborRate  ?? 150)
+
+  // Plate quick-search (create mode only)
+  const [plateSearch,    setPlateSearch]    = useState('')
+  const [plateSearching, setPlateSearching] = useState(false)
+  const [govLookup,      setGovLookup]      = useState<VehicleLookupResult | null>(null)
+  const [govSearching,   setGovSearching]   = useState(false)
+  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const filteredVehicles = vehicles.filter((v) => v.customerId === selectedCustomerId)
   const laborTotal = laborHours * laborRate
@@ -47,6 +56,59 @@ export function WorkOrderForm({ customers, vehicles, mode = 'create', workOrder 
   function fmt(n: number) {
     return `₪${n.toLocaleString('he-IL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
   }
+
+  // ── Plate quick-search ────────────────────────────────────────────────────
+
+  function handlePlateSearch(val: string) {
+    setPlateSearch(val)
+    setGovLookup(null)
+    if (searchTimer.current) clearTimeout(searchTimer.current)
+    if (val.length < 2) return
+
+    setPlateSearching(true)
+    searchTimer.current = setTimeout(async () => {
+      try {
+        const res  = await fetch(`/api/vehicles/search?plate=${encodeURIComponent(val)}`)
+        const data = await res.json() as {
+          vehicle: { id: string; customerId?: string } | null
+          customer: { id: string } | null
+          matches: { vehicle: { id: string }; customer: { id: string } }[]
+        }
+
+        // Auto-select if exact match
+        if (data.vehicle && data.customer) {
+          setSelectedCustomerId(data.customer.id)
+          setSelectedVehicleId(data.vehicle.id)
+        } else if (data.matches.length === 1) {
+          setSelectedCustomerId(data.matches[0].customer.id)
+          setSelectedVehicleId(data.matches[0].vehicle.id)
+        } else {
+          // Not in DB — try gov API if plate has 7-8 digits
+          const digits = val.replace(/\D/g, '')
+          if (digits.length >= 7) {
+            triggerGovLookup(val)
+          }
+        }
+      } finally {
+        setPlateSearching(false)
+      }
+    }, 400)
+  }
+
+  async function triggerGovLookup(plate: string) {
+    setGovSearching(true)
+    try {
+      const res  = await fetch(`/api/vehicle-lookup?plate=${encodeURIComponent(plate)}`)
+      const json = await res.json()
+      if (json.found) setGovLookup(json.vehicle as VehicleLookupResult)
+    } catch {
+      // non-fatal
+    } finally {
+      setGovSearching(false)
+    }
+  }
+
+  // ── Submit ────────────────────────────────────────────────────────────────
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -70,6 +132,40 @@ export function WorkOrderForm({ customers, vehicles, mode = 'create', workOrder 
 
   return (
     <form onSubmit={handleSubmit} className="space-y-5">
+
+      {/* ── Plate Quick-Search (create mode only) ─────────── */}
+      {mode === 'create' && (
+        <section className="bg-surface border border-[#2e3147] rounded-xl p-6">
+          <h3 className="text-xs font-semibold text-muted uppercase tracking-wider mb-4">חיפוש מהיר לפי לוחית</h3>
+          <div className="relative">
+            <Search size={15} className="absolute start-3 top-1/2 -translate-y-1/2 text-[#8892a4]" />
+            <input
+              type="text"
+              value={plateSearch}
+              onChange={(e) => handlePlateSearch(e.target.value.toUpperCase())}
+              placeholder="הקלד לוחית לחיפוש אוטומטי..."
+              className={`${INPUT} ps-9 font-mono tracking-widest uppercase`}
+            />
+            {(plateSearching || govSearching) && (
+              <Loader2 size={14} className="absolute end-3 top-1/2 -translate-y-1/2 animate-spin text-[#8892a4]" />
+            )}
+          </div>
+          {govLookup && (
+            <div className="flex items-center gap-2 mt-2 text-xs text-emerald-400">
+              <CheckCircle size={13} />
+              <span>
+                <strong>{govLookup.make} {govLookup.model} {govLookup.year}</strong>
+                {govLookup.trim ? ` — ${govLookup.trim}` : ''}
+                {' '}(מרשם הרכב — יש להוסיף את הרכב למערכת תחילה)
+              </span>
+            </div>
+          )}
+          {selectedVehicleId && (
+            <p className="mt-2 text-xs text-[#6366f1]">✓ רכב נבחר אוטומטית</p>
+          )}
+        </section>
+      )}
+
       {/* ── Vehicle & Customer ─────────────────────────────── */}
       <section className="bg-surface border border-[#2e3147] rounded-xl p-6">
         <h3 className="text-xs font-semibold text-muted uppercase tracking-wider mb-4">רכב ולקוח</h3>
@@ -81,7 +177,7 @@ export function WorkOrderForm({ customers, vehicles, mode = 'create', workOrder 
               name="customerId"
               required
               value={selectedCustomerId}
-              onChange={(e) => setSelectedCustomerId(e.target.value)}
+              onChange={(e) => { setSelectedCustomerId(e.target.value); setSelectedVehicleId('') }}
               className={INPUT}
             >
               <option value="">בחר לקוח...</option>
@@ -100,7 +196,8 @@ export function WorkOrderForm({ customers, vehicles, mode = 'create', workOrder 
               name="vehicleId"
               required
               disabled={!selectedCustomerId}
-              defaultValue={workOrder?.vehicleId ?? ''}
+              value={selectedVehicleId}
+              onChange={(e) => setSelectedVehicleId(e.target.value)}
               className={`${INPUT} disabled:opacity-40 disabled:cursor-not-allowed`}
             >
               <option value="">בחר רכב...</option>
