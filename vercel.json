@@ -1,0 +1,32 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "nextjs",
+
+  "buildCommand": "npx prisma generate && next build",
+  "installCommand": "npm install",
+  "devCommand": "next dev",
+
+  "regions": ["fra1"],
+
+  "cleanUrls": true,
+
+  "headers": [
+    {
+      "source": "/api/(.*)",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-store" }
+      ]
+    },
+    {
+      "source": "/uploads/(.*)",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }
+      ]
+    }
+  ],
+
+  "rewrites": [],
+  "redirects": [],
+
+  "crons": []
+}

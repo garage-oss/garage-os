@@ -1,151 +1,184 @@
 # GarageOS — מערכת ניהול מוסך
 
-A full-stack garage management system built with Next.js 14, TypeScript, Tailwind CSS, Prisma, and PostgreSQL. Hebrew RTL UI.
+A production-ready, multi-tenant **garage management SaaS** built with Next.js 14,
+TypeScript, Prisma + PostgreSQL, and a Hebrew RTL UI.
+
+---
+
+## Features
+
+| Module | Description |
+|---|---|
+| **Customers** | Full CRUD, vehicle history, communication log |
+| **Vehicles** | Fleet tracking, specs, service history |
+| **Work Orders** | Job management, technician assignment, status pipeline |
+| **Inventory** | Parts tracking, low-stock alerts, movement log |
+| **Suppliers** | Supplier management with part associations |
+| **Quotes** | PDF-ready quotes linked to customers/vehicles |
+| **AI Diagnostics** | Claude-powered diagnostic session assistant |
+| **Staff** | Team management, RBAC, avatar upload, last-login |
+| **Audit Log** | Immutable audit trail for all mutations |
+| **Settings** | Org profile, team invites, subscription plan |
+
+---
 
 ## Tech Stack
 
-| Layer      | Technology                        |
-|------------|-----------------------------------|
-| Framework  | Next.js 14 (App Router)           |
-| Language   | TypeScript                        |
-| Styling    | Tailwind CSS + Rubik font (Hebrew)|
-| Auth       | NextAuth.js v4 (Credentials)      |
-| ORM        | Prisma 5                          |
-| Database   | PostgreSQL                        |
+| Layer | Technology |
+|---|---|
+| Framework | Next.js 14 (App Router, Server Actions) |
+| Language | TypeScript |
+| Database | PostgreSQL via Prisma |
+| Auth | NextAuth.js (Credentials) |
+| UI | Tailwind CSS — dark mode, Hebrew RTL |
+| AI | Anthropic Claude SDK |
+| Deployment | Vercel + Neon / Supabase PostgreSQL |
 
-## Prerequisites
+---
 
-- **Node.js 18+** — [nodejs.org](https://nodejs.org)
-- **PostgreSQL** — running locally or via Docker
-
-## Quick start
-
-### 1. Install Node.js (Windows)
-
-```powershell
-winget install OpenJS.NodeJS
-```
-
-Restart your terminal, then verify:
-
-```powershell
-node -v   # v18+
-npm -v
-```
-
-### 2. Install dependencies
+## Quick Start (development)
 
 ```bash
+# 1. Clone
+git clone https://github.com/your-org/garage-app.git
+cd garage-app
+
+# 2. Install
 npm install
-```
 
-### 3. Set up environment variables
-
-```bash
+# 3. Configure
 cp .env.example .env
-```
+# Edit .env — set DATABASE_URL and NEXTAUTH_SECRET at minimum
 
-Edit `.env` and set your PostgreSQL connection string:
+# 4. Set up database
+npx prisma db push
 
-```env
-DATABASE_URL="postgresql://postgres:yourpassword@localhost:5432/garagedb"
-NEXTAUTH_SECRET="any-random-string-at-least-32-chars"
-NEXTAUTH_URL="http://localhost:3000"
-```
+# 5. Seed demo data
+npx tsx prisma/seed.ts
 
-### 4. Set up the database
-
-```bash
-# Push schema to database (creates tables)
-npm run db:push
-
-# Seed initial admin user
-npm run db:seed
-```
-
-Default admin credentials after seed:
-- Email: `admin@garage.com`
-- Password: `admin123`
-
-### 5. Run the dev server
-
-```bash
+# 6. Run
 npm run dev
+# → http://localhost:3000
 ```
-
-Open [http://localhost:3000](http://localhost:3000) → redirects to login → dashboard.
 
 ---
 
-## PostgreSQL via Docker (optional)
+## Demo accounts
 
-If you don't have PostgreSQL installed locally:
+All passwords: `admin123`
+
+| Email | Role | Access |
+|---|---|---|
+| `owner@garage.com` | OWNER | Full access + billing |
+| `manager@garage.com` | MANAGER | All modules except billing |
+| `advisor@garage.com` | SERVICE_ADVISOR | Customers, vehicles, quotes |
+| `tech@garage.com` | TECHNICIAN | Work orders, diagnostics |
+| `accountant@garage.com` | ACCOUNTANT | Reports, quotes, read-only |
+
+---
+
+## Architecture
+
+```
+src/
+├── app/
+│   ├── actions/          # Server Actions (form mutations)
+│   ├── api/              # API routes (health check, avatar upload)
+│   ├── dashboard/        # Authenticated app pages
+│   │   ├── customers/
+│   │   ├── vehicles/
+│   │   ├── work-orders/
+│   │   ├── inventory/
+│   │   ├── suppliers/
+│   │   ├── quotes/
+│   │   ├── diagnostics/
+│   │   ├── staff/
+│   │   ├── audit/
+│   │   └── settings/
+│   ├── invite/           # Invitation acceptance flow
+│   ├── login/
+│   └── onboarding/
+├── components/
+│   ├── audit/
+│   ├── rbac/             # PermissionGuard, AdminGuard, OwnerGuard
+│   ├── settings/
+│   └── staff/
+└── lib/
+    ├── audit.ts          # Audit logging
+    ├── billing.ts        # Plan limits, trial management
+    ├── env.ts            # Zod-validated environment
+    ├── flags.ts          # Feature flags
+    ├── logger.ts         # Structured logger
+    ├── org.ts            # Org context, members, invitations
+    ├── prisma.ts         # Prisma client singleton
+    ├── rbac.ts           # Role-based access control matrix
+    ├── ratelimit.ts      # Rate limiting abstraction
+    ├── staff.ts          # Staff queries
+    └── storage.ts        # File storage abstraction
+```
+
+### RBAC
+
+5 roles × 12 modules × 4 actions — defined as a static matrix in `src/lib/rbac.ts`:
+
+| Role | Customers | Work Orders | Inventory | Reports | Settings | Users | Audit |
+|---|---|---|---|---|---|---|---|
+| OWNER | Full | Full | Full | Read | R+U | Full | Read |
+| MANAGER | Full | Full | R+C+U | Read | R+U | R+C+U | Read |
+| SERVICE_ADVISOR | R+C+U | R+C+U | Read | — | — | — | — |
+| TECHNICIAN | Read | R+U | Read | — | — | — | — |
+| ACCOUNTANT | Read | Read | Read | Read | — | — | Read |
+
+### Multi-tenancy
+
+Every database row is scoped to an `organizationId`.
+`requireOrg()` in `src/lib/org.ts` validates the session and returns
+`{ orgId, userId, memberRole }` — called at the top of every server page and action.
+
+---
+
+## Scripts
 
 ```bash
-docker run --name garagedb \
-  -e POSTGRES_PASSWORD=yourpassword \
-  -e POSTGRES_DB=garagedb \
-  -p 5432:5432 \
-  -d postgres:16
-```
-
-Then use:
-
-```env
-DATABASE_URL="postgresql://postgres:yourpassword@localhost:5432/garagedb"
-```
-
----
-
-## Database management
-
-```bash
-npm run db:studio    # Open Prisma Studio (visual DB browser)
-npm run db:migrate   # Run migrations (production workflow)
-npm run db:push      # Push schema changes directly (dev only)
+npm run dev          # start development server
+npm run build        # production build
+npm run start        # start production server
+npm run typecheck    # TypeScript check (no emit)
+npm run lint         # ESLint
+npm run db:push      # sync schema to database
+npm run db:migrate   # create + run migration
+npm run db:studio    # open Prisma Studio
+npm run db:seed      # seed demo data
+npm run db:reset     # force-reset database
 ```
 
 ---
 
-## Project structure
+## Deployment
 
-```
-garage-app/
-├── prisma/
-│   ├── schema.prisma      # Database schema
-│   └── seed.ts            # Initial data (admin user)
-├── src/
-│   ├── app/
-│   │   ├── layout.tsx     # Root layout — Hebrew RTL, Rubik font
-│   │   ├── providers.tsx  # SessionProvider wrapper
-│   │   ├── globals.css    # CSS variables + Tailwind base
-│   │   ├── login/
-│   │   │   └── page.tsx   # Login page
-│   │   ├── dashboard/
-│   │   │   ├── layout.tsx # Dashboard shell (auth guard + sidebar)
-│   │   │   └── page.tsx   # Dashboard home
-│   │   └── api/auth/      # NextAuth route handler
-│   ├── components/
-│   │   ├── Sidebar.tsx    # RTL sidebar with nav items
-│   │   └── TopBar.tsx     # Top bar with user avatar
-│   ├── lib/
-│   │   ├── auth.ts        # NextAuth config (Credentials provider)
-│   │   └── prisma.ts      # Prisma client singleton
-│   ├── types/
-│   │   └── next-auth.d.ts # Session type augmentation
-│   └── middleware.ts      # Protects /dashboard routes
-├── .env.example
-├── next.config.js
-├── tailwind.config.ts
-└── tsconfig.json
-```
+See **[docs/deployment.md](docs/deployment.md)** for full instructions.
+
+**Quick deploy to Vercel:**
+
+1. Push to GitHub
+2. Import in Vercel dashboard
+3. Add environment variables (see `.env.example`)
+4. Set build command: `npx prisma generate && next build`
+5. Deploy
 
 ---
 
-## Hebrew RTL notes
+## Environment Variables
 
-- `<html lang="he" dir="rtl">` is set in `src/app/layout.tsx`
-- Sidebar is positioned on the **right** side using Tailwind logical properties (`start-0`, `border-e`)
-- Main content uses `ms-[220px]` (margin-inline-start = margin-right in RTL)
-- Font: **Rubik** (Google Fonts) — designed for Hebrew and Latin
-- Use `ms-`, `me-`, `ps-`, `pe-` Tailwind classes instead of `ml-`, `mr-` to keep RTL-aware spacing
+See **[docs/environment.md](docs/environment.md)** for the full reference.
+
+Minimum required:
+- `DATABASE_URL` — PostgreSQL connection string
+- `NEXTAUTH_SECRET` — random secret (≥ 32 chars): `openssl rand -base64 32`
+- `NEXTAUTH_URL` — public app URL
+
+---
+
+## License
+
+Private — all rights reserved.
