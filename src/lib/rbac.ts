@@ -15,6 +15,9 @@ export type AppModule =
   | 'settings'
   | 'users'
   | 'audit'
+  | 'kpi'
+  | 'intake'
+  | 'mobile'
 
 export type AppPermission = 'read' | 'create' | 'update' | 'delete'
 
@@ -45,6 +48,9 @@ export const ROLE_PERMISSIONS: Record<MemberRole, ModulePermissions> = {
     settings:    ['read', 'update'],
     users:       FULL,
     audit:       R,
+    kpi:         R,
+    intake:      RC,
+    mobile:      R,
   },
 
   // ── Manager: full ops, can invite/manage team (not delete members) ─────────
@@ -61,6 +67,9 @@ export const ROLE_PERMISSIONS: Record<MemberRole, ModulePermissions> = {
     settings:    ['read', 'update'],
     users:       RCU,
     audit:       R,
+    kpi:         R,
+    intake:      RC,
+    mobile:      R,
   },
 
   // ── Service Advisor: customer-facing, no finance/settings ────────────────
@@ -77,6 +86,9 @@ export const ROLE_PERMISSIONS: Record<MemberRole, ModulePermissions> = {
     settings:    NONE,
     users:       NONE,
     audit:       NONE,
+    kpi:         NONE,
+    intake:      RC,
+    mobile:      NONE,
   },
 
   // ── Technician: shop floor — work orders, diagnostics, media only ─────────
@@ -93,6 +105,9 @@ export const ROLE_PERMISSIONS: Record<MemberRole, ModulePermissions> = {
     settings:    NONE,
     users:       NONE,
     audit:       NONE,
+    kpi:         NONE,
+    intake:      NONE,
+    mobile:      R,
   },
 
   // ── Accountant: financial read + quotes, no shop operations ──────────────
@@ -109,6 +124,9 @@ export const ROLE_PERMISSIONS: Record<MemberRole, ModulePermissions> = {
     settings:    NONE,
     users:       NONE,
     audit:       R,
+    kpi:         R,
+    intake:      NONE,
+    mobile:      NONE,
   },
 }
 
@@ -155,6 +173,9 @@ export const MODULE_LABELS: Record<AppModule, string> = {
   settings:    'הגדרות',
   users:       'צוות',
   audit:       'יומן פעולות',
+  kpi:         'לוח KPI',
+  intake:      'קבלת רכב',
+  mobile:      'מצב טכנאי',
 }
 
 export const PERMISSION_LABELS: Record<AppPermission, string> = {

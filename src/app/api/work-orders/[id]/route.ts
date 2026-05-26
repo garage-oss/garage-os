@@ -19,6 +19,7 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
     totalPrice: toNum(wo.totalPrice),
     createdAt: wo.createdAt.toISOString(),
     updatedAt: wo.updatedAt.toISOString(),
+    orgName:   org.orgName,
     items: wo.items.map((item) => ({
       ...item,
       unitPrice: toNum(item.unitPrice),

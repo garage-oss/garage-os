@@ -6,6 +6,7 @@ import type { LucideIcon } from 'lucide-react'
 import {
   LayoutDashboard, Users, Car, Wrench, Package, FileText,
   Settings, LogOut, Truck, Brain, Shield, UserCog,
+  BarChart2, ClipboardList, Smartphone,
 } from 'lucide-react'
 import { signOut } from 'next-auth/react'
 import { PlanType, MemberRole } from '@prisma/client'
@@ -22,6 +23,7 @@ interface NavItem {
 
 const ALL_NAV: NavItem[] = [
   { href: '/dashboard',             label: 'לוח בקרה',     icon: LayoutDashboard, exact: true, module: 'workOrders' },
+  { href: '/dashboard/intake',      label: 'קבלת רכב',     icon: ClipboardList,   module: 'intake'     },
   { href: '/dashboard/customers',   label: 'לקוחות',       icon: Users,           module: 'customers'  },
   { href: '/dashboard/vehicles',    label: 'רכבים',        icon: Car,             module: 'vehicles'   },
   { href: '/dashboard/work-orders', label: 'פקודות עבודה', icon: Wrench,          module: 'workOrders' },
@@ -29,8 +31,10 @@ const ALL_NAV: NavItem[] = [
   { href: '/dashboard/suppliers',   label: 'ספקים',        icon: Truck,           module: 'suppliers'  },
   { href: '/dashboard/quotes',      label: 'הצעות מחיר',  icon: FileText,        module: 'quotes'     },
   { href: '/dashboard/diagnostics', label: 'אבחון AI',     icon: Brain,           module: 'diagnostics'},
+  { href: '/dashboard/kpi',         label: 'לוח KPI',      icon: BarChart2,       module: 'kpi'        },
   { href: '/dashboard/staff',       label: 'צוות',         icon: UserCog,         module: 'users'      },
   { href: '/dashboard/audit',       label: 'יומן פעולות',  icon: Shield,          module: 'audit'      },
+  { href: '/mobile/jobs',           label: 'מצב טכנאי',    icon: Smartphone,      module: 'mobile'     },
 ]
 
 interface SidebarProps {

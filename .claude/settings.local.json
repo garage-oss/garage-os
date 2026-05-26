@@ -15,7 +15,12 @@
       "Bash(Out-Null)",
       "Bash(Write-Host \"Directories created\")",
       "Bash(mkdir -p src/app/api/upload src/app/api/media/[id] src/app/api/diagnostics/[id] src/app/dashboard/diagnostics/new \"src/app/dashboard/diagnostics/[id]\" \"src/app/share/quote/[id]\" \"src/app/share/work-order/[id]\" src/components/media src/components/notes src/components/communication src/components/diagnostics public/uploads && echo \"ok\")",
-      "Bash(npx prisma *)"
+      "Bash(npx prisma *)",
+      "Bash(Get-ChildItem \"C:\\\\garage-app\\\\src\\\\app\\\\dashboard\" -Name)",
+      "Bash(Write-Host \"---\")",
+      "Bash(Get-ChildItem \"C:\\\\garage-app\\\\src\\\\app\\\\actions\" -Name)",
+      "Bash(npx tsc *)",
+      "Bash(npx tsx *)"
     ]
   }
 }

@@ -108,6 +108,18 @@ enum NotificationType {
   SYSTEM
 }
 
+enum CommChannel {
+  WHATSAPP
+  SMS
+  EMAIL
+  PHONE
+}
+
+enum CommDirection {
+  OUTBOUND
+  INBOUND
+}
+
 // ─── Org / Auth ───────────────────────────────────────────────────────────────
 
 model Organization {
@@ -143,6 +155,8 @@ model Organization {
   invoices           Invoice[]
   auditLogs          AuditLog[]
   notifications      Notification[]
+  commLogs           CommLog[]
+  paymentLinks       PaymentLink[]
 }
 
 model Membership {
@@ -253,6 +267,7 @@ model Customer {
   workOrders     WorkOrder[]
   invoices       Invoice[]
   quotes         Quote[]
+  commLogs       CommLog[]
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 
@@ -308,14 +323,21 @@ model WorkOrder {
   customer           Customer            @relation(fields: [customerId], references: [id])
   vehicleId          String
   vehicle            Vehicle             @relation(fields: [vehicleId], references: [id])
-  items              WorkOrderItem[]
-  invoice            Invoice?
-  quote              Quote?
-  techNotes          TechnicianNote[]
-  media              MediaFile[]
-  diagnosticSessions DiagnosticSession[]
-  createdAt          DateTime            @default(now())
-  updatedAt          DateTime            @updatedAt
+  items                WorkOrderItem[]
+  invoice              Invoice?
+  quote                Quote?
+  techNotes            TechnicianNote[]
+  media                MediaFile[]
+  diagnosticSessions   DiagnosticSession[]
+  timeEntries          TimeEntry[]
+  commLogs             CommLog[]
+  paymentLinks         PaymentLink[]
+  completedAt          DateTime?
+  receivedAt           DateTime?
+  signatureUrl         String?
+  assignedTechnicianId String?
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
 
   @@unique([workOrderNumber, organizationId])
   @@index([organizationId])
@@ -491,6 +513,72 @@ model Invoice {
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
 
+  paymentLinks PaymentLink[]
+
   @@unique([number, organizationId])
   @@index([organizationId])
+}
+
+// ─── Time Tracking ────────────────────────────────────────────────────────────
+
+model TimeEntry {
+  id          String     @id @default(cuid())
+  workOrderId String
+  workOrder   WorkOrder  @relation(fields: [workOrderId], references: [id], onDelete: Cascade)
+  techName    String
+  techId      String?
+  startedAt   DateTime
+  pausedAt    DateTime?
+  finishedAt  DateTime?
+  durationMin Int        @default(0)
+  notes       String?
+  createdAt   DateTime   @default(now())
+
+  @@index([workOrderId])
+  @@index([techId])
+}
+
+// ─── Communication Log ────────────────────────────────────────────────────────
+
+model CommLog {
+  id             String        @id @default(cuid())
+  organizationId String
+  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  customerId     String?
+  customer       Customer?     @relation(fields: [customerId], references: [id])
+  workOrderId    String?
+  workOrder      WorkOrder?    @relation(fields: [workOrderId], references: [id])
+  channel        CommChannel   @default(WHATSAPP)
+  direction      CommDirection @default(OUTBOUND)
+  templateType   String?
+  message        String
+  recipientPhone String?
+  sentAt         DateTime      @default(now())
+  deliveredAt    DateTime?
+
+  @@index([organizationId, sentAt(sort: Desc)])
+  @@index([customerId])
+  @@index([workOrderId])
+}
+
+// ─── Payment Links ────────────────────────────────────────────────────────────
+
+model PaymentLink {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  workOrderId    String?
+  workOrder      WorkOrder?   @relation(fields: [workOrderId], references: [id])
+  invoiceId      String?
+  invoice        Invoice?     @relation(fields: [invoiceId], references: [id])
+  amount         Decimal      @db.Decimal(10, 2)
+  currency       String       @default("ILS")
+  token          String       @unique @default(cuid())
+  description    String?
+  paidAt         DateTime?
+  expiresAt      DateTime?
+  createdAt      DateTime     @default(now())
+
+  @@index([organizationId])
+  @@index([token])
 }
