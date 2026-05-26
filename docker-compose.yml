@@ -1,0 +1,71 @@
+version: '3.9'
+
+# ── GarageOS local development stack ──────────────────────────────────────────
+# Usage:
+#   docker compose up -d          # Start postgres + app
+#   docker compose logs -f app    # Tail app logs
+#   docker compose down -v        # Destroy everything including DB volume
+
+services:
+
+  # ── PostgreSQL ──────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER:     garageos
+      POSTGRES_PASSWORD: garageos_dev
+      POSTGRES_DB:       garagedb
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U garageos -d garagedb"]
+      interval: 5s
+      timeout:  5s
+      retries:  10
+
+  # ── GarageOS app ────────────────────────────────────────────────────────────
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file: .env
+    environment:
+      DATABASE_URL: "postgresql://garageos:garageos_dev@postgres:5432/garagedb"
+      NODE_ENV:     production
+    ports:
+      - "3000:3000"
+    volumes:
+      # Persist local uploads in development
+      - uploads:/app/public/uploads
+
+  # ── pg_dump daily backup (optional) ─────────────────────────────────────────
+  backup:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGPASSWORD: garageos_dev
+    volumes:
+      - ./backups:/backups
+      - ./scripts/backup.sh:/backup.sh:ro
+    entrypoint: >
+      sh -c "
+        chmod +x /backup.sh &&
+        while true; do
+          sleep 86400 &&
+          /backup.sh
+        done
+      "
+
+volumes:
+  postgres_data:
+  uploads:

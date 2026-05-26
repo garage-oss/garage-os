@@ -18,6 +18,7 @@ export type AppModule =
   | 'kpi'
   | 'intake'
   | 'mobile'
+  | 'clock'
 
 export type AppPermission = 'read' | 'create' | 'update' | 'delete'
 
@@ -51,6 +52,7 @@ export const ROLE_PERMISSIONS: Record<MemberRole, ModulePermissions> = {
     kpi:         R,
     intake:      RC,
     mobile:      R,
+    clock:       FULL,
   },
 
   // ── Manager: full ops, can invite/manage team (not delete members) ─────────
@@ -70,6 +72,7 @@ export const ROLE_PERMISSIONS: Record<MemberRole, ModulePermissions> = {
     kpi:         R,
     intake:      RC,
     mobile:      R,
+    clock:       FULL,
   },
 
   // ── Service Advisor: customer-facing, no finance/settings ────────────────
@@ -89,6 +92,7 @@ export const ROLE_PERMISSIONS: Record<MemberRole, ModulePermissions> = {
     kpi:         NONE,
     intake:      RC,
     mobile:      NONE,
+    clock:       RC,
   },
 
   // ── Technician: shop floor — work orders, diagnostics, media only ─────────
@@ -108,6 +112,7 @@ export const ROLE_PERMISSIONS: Record<MemberRole, ModulePermissions> = {
     kpi:         NONE,
     intake:      NONE,
     mobile:      R,
+    clock:       RC,
   },
 
   // ── Accountant: financial read + quotes, no shop operations ──────────────
@@ -127,6 +132,7 @@ export const ROLE_PERMISSIONS: Record<MemberRole, ModulePermissions> = {
     kpi:         R,
     intake:      NONE,
     mobile:      NONE,
+    clock:       NONE,
   },
 }
 
@@ -176,6 +182,7 @@ export const MODULE_LABELS: Record<AppModule, string> = {
   kpi:         'לוח KPI',
   intake:      'קבלת רכב',
   mobile:      'מצב טכנאי',
+  clock:       'שעון נוכחות',
 }
 
 export const PERMISSION_LABELS: Record<AppPermission, string> = {

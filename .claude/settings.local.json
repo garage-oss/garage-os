@@ -20,7 +20,15 @@
       "Bash(Write-Host \"---\")",
       "Bash(Get-ChildItem \"C:\\\\garage-app\\\\src\\\\app\\\\actions\" -Name)",
       "Bash(npx tsc *)",
-      "Bash(npx tsx *)"
+      "Bash(npx tsx *)",
+      "Bash(node -e \"const s = require\\('stripe'\\); console.log\\(Object.keys\\(s.Stripe || {}\\).slice\\(0,5\\)\\)\")",
+      "Bash(node -e \"const Stripe = require\\('stripe'\\); const s = new Stripe\\('sk_test_x'\\); console.log\\(s.getApiField ? 'ok' : 'no'\\)\")",
+      "Bash(python -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(d.get\\('version', 'unknown'\\)\\)\")",
+      "Bash(node -e \"const d=require\\('/dev/stdin'\\); console.log\\(d.version\\)\")",
+      "Bash(node -e \"try { const Stripe = require\\('stripe'\\); const s = new Stripe\\('sk_test_x', {apiVersion: '2026-04-22.basil'}\\); console.log\\('ok'\\) } catch\\(e\\) { console.log\\(e.message\\) }\")",
+      "Bash(node -e \"const Stripe = require\\('./node_modules/stripe'\\); console.log\\(Stripe.LATEST_API_VERSION\\)\")",
+      "Bash(node -e \"const lib = require\\('./node_modules/stripe/cjs/lib'\\); console.log\\(Object.keys\\(lib\\).slice\\(0,10\\)\\)\")",
+      "Bash(xargs grep -l \"apiVersion\")"
     ]
   }
 }

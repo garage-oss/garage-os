@@ -14,6 +14,8 @@ export type OrgContext = {
   orgPlan:    PlanType
   memberRole: MemberRole
   userId:     string
+  userEmail:  string | undefined
+  userName:   string | undefined
 }
 
 // ─── Core helpers ─────────────────────────────────────────────────────────────
@@ -40,6 +42,8 @@ export const getOrgContext = cache(async (): Promise<OrgContext | null> => {
     orgPlan:    membership.organization.plan,
     memberRole: membership.role,
     userId:     session.user.id,
+    userEmail:  session.user.email ?? undefined,
+    userName:   session.user.name  ?? undefined,
   }
 })
 

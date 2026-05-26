@@ -4,6 +4,7 @@ import { authOptions } from '@/lib/auth'
 import { getOrgContext } from '@/lib/org'
 import Sidebar from '@/components/Sidebar'
 import TopBar from '@/components/TopBar'
+import { SessionTimeout } from '@/components/SessionTimeout'
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const session = await getServerSession(authOptions)
@@ -25,6 +26,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
         <TopBar user={{ ...session.user, id: (session.user as { id?: string }).id }} />
         <main className="flex-1 p-6 lg:p-8 overflow-x-hidden">{children}</main>
       </div>
+      <SessionTimeout />
     </div>
   )
 }

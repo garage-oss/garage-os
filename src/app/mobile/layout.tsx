@@ -3,7 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { getOrgContext } from '@/lib/org'
 import Link from 'next/link'
-import { Wrench, Home } from 'lucide-react'
+import { Wrench, Home, Clock } from 'lucide-react'
 
 export const metadata = { title: 'GarageOS Mobile', description: 'Technician mobile view' }
 
@@ -28,6 +28,10 @@ export default async function MobileLayout({ children }: { children: React.React
           <div className="flex items-center gap-3">
             <Link href="/mobile/jobs" className="text-xs text-[#8892a4] hover:text-white px-3 py-1.5 rounded-lg hover:bg-[#1a1d27] transition-colors">
               משימות
+            </Link>
+            <Link href="/dashboard/clock" className="text-xs text-[#8892a4] hover:text-white px-3 py-1.5 rounded-lg hover:bg-[#1a1d27] transition-colors flex items-center gap-1">
+              <Clock size={13} />
+              נוכחות
             </Link>
             <Link href="/dashboard" className="text-xs text-[#8892a4] hover:text-white px-3 py-1.5 rounded-lg hover:bg-[#1a1d27] transition-colors flex items-center gap-1">
               <Home size={13} />

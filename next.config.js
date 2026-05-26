@@ -26,6 +26,15 @@ const PROD_HEADERS = [
 ]
 
 const nextConfig = {
+  // ── Standalone output for Docker deployment ────────────────────────────────
+  // Produces a minimal self-contained build in .next/standalone/
+  output: 'standalone',
+
+  // ── Public env vars for client components ─────────────────────────────────
+  env: {
+    NEXT_PUBLIC_SESSION_TIMEOUT: process.env.SESSION_TIMEOUT_MINUTES ?? '480',
+  },
+
   // ── Security headers ───────────────────────────────────────────────────────
   async headers() {
     const headers = [

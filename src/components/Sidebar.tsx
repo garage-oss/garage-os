@@ -6,7 +6,7 @@ import type { LucideIcon } from 'lucide-react'
 import {
   LayoutDashboard, Users, Car, Wrench, Package, FileText,
   Settings, LogOut, Truck, Brain, Shield, UserCog,
-  BarChart2, ClipboardList, Smartphone,
+  BarChart2, ClipboardList, Smartphone, Clock,
 } from 'lucide-react'
 import { signOut } from 'next-auth/react'
 import { PlanType, MemberRole } from '@prisma/client'
@@ -35,6 +35,7 @@ const ALL_NAV: NavItem[] = [
   { href: '/dashboard/staff',       label: 'צוות',         icon: UserCog,         module: 'users'      },
   { href: '/dashboard/audit',       label: 'יומן פעולות',  icon: Shield,          module: 'audit'      },
   { href: '/mobile/jobs',           label: 'מצב טכנאי',    icon: Smartphone,      module: 'mobile'     },
+  { href: '/dashboard/clock',       label: 'שעון נוכחות',  icon: Clock,           module: 'clock'      },
 ]
 
 interface SidebarProps {

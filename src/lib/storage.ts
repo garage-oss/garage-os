@@ -60,33 +60,49 @@ class LocalProvider implements StorageProvider {
 
 // ─── S3 provider ─────────────────────────────────────────────────────────────
 //
-// Uncomment after: npm install @aws-sdk/client-s3
-//
-// import { S3Client, PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3'
-//
-// class S3Provider implements StorageProvider {
-//   private client = new S3Client({ region: process.env.AWS_REGION! })
-//   private bucket = process.env.AWS_S3_BUCKET!
-//   private cdn    = process.env.AWS_S3_PUBLIC_URL
-//
-//   async upload({ key, buffer, mimeType }: UploadOptions): Promise<UploadResult> {
-//     await this.client.send(new PutObjectCommand({
-//       Bucket: this.bucket,
-//       Key:    key,
-//       Body:   buffer,
-//       ContentType: mimeType,
-//       ACL: 'public-read',
-//     }))
-//     const url = this.cdn
-//       ? `${this.cdn}/${key}`
-//       : `https://${this.bucket}.s3.${process.env.AWS_REGION}.amazonaws.com/${key}`
-//     return { url, key }
-//   }
-//
-//   async delete(key: string): Promise<void> {
-//     await this.client.send(new DeleteObjectCommand({ Bucket: this.bucket, Key: key }))
-//   }
-// }
+// Works with: AWS S3, Cloudflare R2, MinIO, DigitalOcean Spaces, Backblaze B2.
+// Set endpoint via AWS_S3_ENDPOINT for non-AWS providers.
+
+import { S3Client, PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3'
+
+class S3Provider implements StorageProvider {
+  private client: S3Client
+  private bucket: string
+  private cdn:    string | undefined
+
+  constructor() {
+    const region   = process.env.AWS_REGION ?? 'us-east-1'
+    const endpoint = process.env.AWS_S3_ENDPOINT  // for R2/MinIO/etc.
+
+    this.client = new S3Client({
+      region,
+      ...(endpoint ? { endpoint, forcePathStyle: true } : {}),
+      credentials: {
+        accessKeyId:     process.env.AWS_ACCESS_KEY_ID!,
+        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
+      },
+    })
+    this.bucket = process.env.AWS_S3_BUCKET!
+    this.cdn    = process.env.AWS_S3_PUBLIC_URL
+  }
+
+  async upload({ key, buffer, mimeType }: UploadOptions): Promise<UploadResult> {
+    await this.client.send(new PutObjectCommand({
+      Bucket:      this.bucket,
+      Key:         key,
+      Body:        buffer,
+      ContentType: mimeType,
+    }))
+    const base = this.cdn
+      ? this.cdn.replace(/\/$/, '')
+      : `https://${this.bucket}.s3.${process.env.AWS_REGION ?? 'us-east-1'}.amazonaws.com`
+    return { url: `${base}/${key}`, key }
+  }
+
+  async delete(key: string): Promise<void> {
+    await this.client.send(new DeleteObjectCommand({ Bucket: this.bucket, Key: key }))
+  }
+}
 
 // ─── Supabase provider ────────────────────────────────────────────────────────
 //
@@ -123,12 +139,10 @@ function createProvider(): StorageProvider {
 
   switch (provider) {
     case 's3':
-      throw new Error(
-        'S3 provider is not yet wired up. See src/lib/storage.ts for instructions.'
-      )
+      return new S3Provider()
     case 'supabase':
       throw new Error(
-        'Supabase provider is not yet wired up. See src/lib/storage.ts for instructions.'
+        'Supabase provider is not yet wired up. Install @supabase/supabase-js first.'
       )
     default:
       return new LocalProvider()
@@ -149,7 +163,9 @@ export const ALLOWED_IMAGE_TYPES = [
 
 export type AllowedImageType = (typeof ALLOWED_IMAGE_TYPES)[number]
 
-export const MAX_AVATAR_SIZE = 5 * 1024 * 1024  // 5 MB
+export const MAX_AVATAR_SIZE = 5 * 1024 * 1024   // 5 MB
+export const MAX_PHOTO_SIZE  = 20 * 1024 * 1024  // 20 MB (work-order photos)
+export const MAX_VOICE_SIZE  = 25 * 1024 * 1024  // 25 MB (voice recordings)
 
 export interface ValidationResult {
   valid:   boolean

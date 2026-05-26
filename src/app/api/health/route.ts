@@ -11,6 +11,9 @@
 import { NextResponse } from 'next/server'
 import { prisma }       from '@/lib/prisma'
 import { logger }       from '@/lib/logger'
+import { isTwilioEnabled } from '@/lib/twilio'
+import { isStripeEnabled } from '@/lib/stripe'
+import { isEmailEnabled }  from '@/lib/email'
 
 export const dynamic = 'force-dynamic'
 
@@ -18,9 +21,9 @@ export const dynamic = 'force-dynamic'
 const startedAt = Date.now()
 
 interface ServiceStatus {
-  status:  'ok' | 'error'
-  latency: number
-  detail?: string
+  status:   'ok' | 'error' | 'disabled'
+  latency?: number
+  detail?:  string
 }
 
 async function checkDatabase(): Promise<ServiceStatus> {
@@ -37,17 +40,55 @@ async function checkDatabase(): Promise<ServiceStatus> {
   }
 }
 
+async function checkStorage(): Promise<ServiceStatus> {
+  const provider = process.env.STORAGE_PROVIDER ?? 'local'
+  if (provider === 'local') return { status: 'ok', detail: 'local' }
+
+  // For S3 — a lightweight existence check would require a ListBuckets call.
+  // For now, just verify config is present.
+  if (provider === 's3') {
+    const ok = !!(process.env.AWS_ACCESS_KEY_ID && process.env.AWS_S3_BUCKET)
+    return {
+      status: ok ? 'ok' : 'error',
+      detail: ok ? 's3' : 'S3 config missing',
+    }
+  }
+
+  return { status: 'disabled', detail: provider }
+}
+
+function checkTwilio(): ServiceStatus {
+  if (!isTwilioEnabled()) return { status: 'disabled' }
+  // Can't ping Twilio without a real message — just confirm config
+  return { status: 'ok', detail: 'configured' }
+}
+
+function checkStripe(): ServiceStatus {
+  if (!isStripeEnabled()) return { status: 'disabled' }
+  return { status: 'ok', detail: 'configured' }
+}
+
+function checkEmail(): ServiceStatus {
+  if (!isEmailEnabled()) return { status: 'disabled' }
+  return { status: 'ok', detail: process.env.SMTP_HOST }
+}
+
 export async function GET() {
   const t0 = Date.now()
 
-  const [db] = await Promise.all([
+  const [db, storage] = await Promise.all([
     checkDatabase(),
-    // Add more service checks here: Redis, S3, etc.
+    checkStorage(),
   ])
 
-  const allOk   = db.status === 'ok'
-  const status  = allOk ? 'ok' : 'degraded'
-  const code    = allOk ? 200 : 503
+  const twilio = checkTwilio()
+  const stripe = checkStripe()
+  const email  = checkEmail()
+
+  const critical = [db]   // services that must be OK for the app to function
+  const allOk    = critical.every((s) => s.status === 'ok')
+  const status   = allOk ? 'ok' : 'degraded'
+  const code     = allOk ? 200 : 503
 
   if (!allOk) {
     logger.error('Health check failed', undefined, { db })
@@ -62,12 +103,15 @@ export async function GET() {
       latency:   Date.now() - t0,
       services: {
         database: db,
+        storage,
+        twilio,
+        stripe,
+        email,
       },
     },
     {
       status:  code,
       headers: {
-        // Never cache health checks
         'Cache-Control': 'no-store, no-cache, must-revalidate',
       },
     }

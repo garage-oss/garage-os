@@ -16,6 +16,9 @@ export type AuditEntityType =
   | 'invitation'
   | 'organization'
   | 'user'
+  | 'paymentLink'
+  | 'clockEntry'
+  | string  // allow future entity types without TS errors
 
 export interface AuditLogEntry {
   orgId: string

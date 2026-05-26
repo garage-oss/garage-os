@@ -4,6 +4,7 @@ import { prisma } from '@/lib/prisma'
 import { requireOrg } from '@/lib/org'
 import { isAdmin } from '@/lib/rbac'
 import { revalidatePath } from 'next/cache'
+import { createAuditLog } from '@/lib/audit'
 
 export type PaymentResult = { error: string } | { success: true; token: string }
 
@@ -11,7 +12,7 @@ export type PaymentResult = { error: string } | { success: true; token: string }
 export async function generatePaymentLink(
   workOrderId: string
 ): Promise<PaymentResult> {
-  const { orgId, memberRole } = await requireOrg()
+  const { orgId, memberRole, userId, userEmail, userName } = await requireOrg()
 
   // Only OWNER / MANAGER / SERVICE_ADVISOR can create payment links
   if (!isAdmin(memberRole) && memberRole !== 'SERVICE_ADVISOR' && memberRole !== 'ACCOUNTANT') {
@@ -45,6 +46,18 @@ export async function generatePaymentLink(
     },
   })
 
+  // Audit log — financial action
+  createAuditLog({
+    orgId,
+    userId,
+    userEmail,
+    userName,
+    action:      'CREATE',
+    entityType:  'paymentLink',
+    entityId:    link.id,
+    entityLabel: `פקודה ${wo.workOrderNumber} — ₪${Number(wo.totalPrice).toFixed(2)}`,
+  }).catch(() => {})
+
   revalidatePath(`/dashboard/work-orders/${workOrderId}`)
   return { success: true, token: link.token }
 }
@@ -56,18 +69,33 @@ export async function markPaymentPaid(token: string): Promise<{ error?: string }
   if (link.paidAt)  return {} // already paid — idempotent
   if (link.expiresAt && link.expiresAt < new Date()) return { error: 'קישור פג תוקף' }
 
+  const now = new Date()
+
   await prisma.paymentLink.update({
     where: { token },
-    data:  { paidAt: new Date() },
+    data:  { paidAt: now },
   })
 
   // Optionally update invoice status
   if (link.invoiceId) {
     await prisma.invoice.update({
       where: { id: link.invoiceId },
-      data:  { status: 'PAID' },
+      data:  { status: 'PAID', updatedAt: now },
     }).catch(() => {})
   }
+
+  // Audit log — financial action (no session on public page, use system actor)
+  createAuditLog({
+    orgId:     link.organizationId,
+    userId:    undefined,
+    userEmail: 'system (public pay page)',
+    userName:  'System',
+    action:    'UPDATE',
+    entityType: 'paymentLink',
+    entityId:   link.id,
+    entityLabel: `תשלום אושר — ₪${Number(link.amount).toFixed(2)}`,
+    afterData:   { paidAt: now.toISOString(), token },
+  }).catch(() => {})
 
   if (link.workOrderId) {
     revalidatePath(`/dashboard/work-orders/${link.workOrderId}`)

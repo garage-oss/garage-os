@@ -43,12 +43,37 @@ const envSchema = z.object({
   UPSTASH_REDIS_REST_URL:   z.string().url().optional(),
   UPSTASH_REDIS_REST_TOKEN: z.string().optional(),
 
+  // ── Twilio (WhatsApp / SMS) ────────────────────────────────────────────────
+  TWILIO_ACCOUNT_SID:     z.string().optional(),
+  TWILIO_AUTH_TOKEN:      z.string().optional(),
+  TWILIO_WHATSAPP_FROM:   z.string().optional(),  // e.g. "whatsapp:+14155238886"
+
+  // ── Stripe (Payments) ────────────────────────────────────────────────────
+  STRIPE_SECRET_KEY:      z.string().optional(),
+  STRIPE_PUBLISHABLE_KEY: z.string().optional(),
+  STRIPE_WEBHOOK_SECRET:  z.string().optional(),
+
+  // ── SMTP (Email) ─────────────────────────────────────────────────────────
+  SMTP_HOST:              z.string().optional(),
+  SMTP_PORT:              z.coerce.number().default(587),
+  SMTP_USER:              z.string().optional(),
+  SMTP_PASS:              z.string().optional(),
+  SMTP_FROM:              z.string().email().optional(),
+  SMTP_SECURE:            z.string().default('false'),  // 'true' for port 465
+
+  // ── Security ─────────────────────────────────────────────────────────────
+  // 32-byte hex string for AES-256-GCM field encryption
+  ENCRYPTION_KEY:         z.string().optional(),
+  SESSION_TIMEOUT_MINUTES: z.coerce.number().default(480), // 8 hours
+
   // ── Feature flags (default values are production-safe) ────────────────────
   FLAG_AI_DIAGNOSTICS:   z.string().default('true'),
   FLAG_AUDIT_LOG:        z.string().default('true'),
   FLAG_AVATAR_UPLOAD:    z.string().default('true'),
   FLAG_ADVANCED_REPORTS: z.string().default('false'),
   FLAG_BILLING_PORTAL:   z.string().default('false'),
+  FLAG_TWILIO_WHATSAPP:  z.string().default('false'), // use real Twilio vs wa.me links
+  FLAG_STRIPE_PAYMENTS:  z.string().default('false'), // use Stripe vs manual pay
 })
 
 export type Env = z.infer<typeof envSchema>
@@ -88,6 +113,31 @@ function validate(): Env {
         '❌  STORAGE_PROVIDER=supabase requires SUPABASE_URL and SUPABASE_SERVICE_KEY'
       )
     }
+  }
+
+  // Twilio cross-field validation
+  if (d.FLAG_TWILIO_WHATSAPP === 'true') {
+    if (!d.TWILIO_ACCOUNT_SID || !d.TWILIO_AUTH_TOKEN || !d.TWILIO_WHATSAPP_FROM) {
+      throw new Error(
+        '❌  FLAG_TWILIO_WHATSAPP=true requires TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN and TWILIO_WHATSAPP_FROM'
+      )
+    }
+  }
+
+  // Stripe cross-field validation
+  if (d.FLAG_STRIPE_PAYMENTS === 'true') {
+    if (!d.STRIPE_SECRET_KEY || !d.STRIPE_PUBLISHABLE_KEY) {
+      throw new Error(
+        '❌  FLAG_STRIPE_PAYMENTS=true requires STRIPE_SECRET_KEY and STRIPE_PUBLISHABLE_KEY'
+      )
+    }
+  }
+
+  // Encryption key format check
+  if (d.ENCRYPTION_KEY && !/^[0-9a-fA-F]{64}$/.test(d.ENCRYPTION_KEY)) {
+    throw new Error(
+      '❌  ENCRYPTION_KEY must be a 64-character hex string (32 bytes, e.g. openssl rand -hex 32)'
+    )
   }
 
   return d

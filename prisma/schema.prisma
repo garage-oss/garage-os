@@ -157,6 +157,7 @@ model Organization {
   notifications      Notification[]
   commLogs           CommLog[]
   paymentLinks       PaymentLink[]
+  clockEntries       ClockEntry[]
 }
 
 model Membership {
@@ -204,6 +205,7 @@ model User {
   lastLoginAt   DateTime?
   memberships   Membership[]
   notifications Notification[]
+  clockEntries  ClockEntry[]
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
 }
@@ -341,6 +343,9 @@ model WorkOrder {
 
   @@unique([workOrderNumber, organizationId])
   @@index([organizationId])
+  @@index([organizationId, status])
+  @@index([organizationId, createdAt(sort: Desc)])
+  @@index([assignedTechnicianId])
 }
 
 model WorkOrderItem {
@@ -564,21 +569,67 @@ model CommLog {
 // ─── Payment Links ────────────────────────────────────────────────────────────
 
 model PaymentLink {
-  id             String       @id @default(cuid())
-  organizationId String
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  workOrderId    String?
-  workOrder      WorkOrder?   @relation(fields: [workOrderId], references: [id])
-  invoiceId      String?
-  invoice        Invoice?     @relation(fields: [invoiceId], references: [id])
-  amount         Decimal      @db.Decimal(10, 2)
-  currency       String       @default("ILS")
-  token          String       @unique @default(cuid())
-  description    String?
-  paidAt         DateTime?
-  expiresAt      DateTime?
-  createdAt      DateTime     @default(now())
+  id                String       @id @default(cuid())
+  organizationId    String
+  organization      Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  workOrderId       String?
+  workOrder         WorkOrder?   @relation(fields: [workOrderId], references: [id])
+  invoiceId         String?
+  invoice           Invoice?     @relation(fields: [invoiceId], references: [id])
+  amount            Decimal      @db.Decimal(10, 2)
+  currency          String       @default("ILS")
+  token             String       @unique @default(cuid())
+  description       String?
+  paidAt            DateTime?
+  expiresAt         DateTime?
+  stripeSessionId   String?      // Stripe Checkout session ID when using Stripe
+  stripePaymentIntent String?    // Stripe PaymentIntent ID after confirmation
+  createdAt         DateTime     @default(now())
 
   @@index([organizationId])
   @@index([token])
+}
+
+// ─── Staff Clock Entries ──────────────────────────────────────────────────────
+
+model ClockEntry {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  clockedInAt    DateTime
+  clockedOutAt   DateTime?
+  breakMinutes   Int          @default(0)
+  notes          String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@index([organizationId, clockedInAt(sort: Desc)])
+  @@index([userId, clockedInAt(sort: Desc)])
+}
+
+// ─── Job Queue (retry queue for async tasks) ──────────────────────────────────
+
+enum JobStatus {
+  PENDING
+  RUNNING
+  DONE
+  FAILED
+}
+
+model JobQueue {
+  id          String    @id @default(cuid())
+  type        String    // e.g. "send_whatsapp", "send_email", "generate_pdf"
+  payload     Json
+  status      JobStatus @default(PENDING)
+  attempts    Int       @default(0)
+  maxAttempts Int       @default(3)
+  lastError   String?
+  runAt       DateTime  @default(now())  // earliest time to try
+  startedAt   DateTime?
+  finishedAt  DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@index([status, runAt])
 }

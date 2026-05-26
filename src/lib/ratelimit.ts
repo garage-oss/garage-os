@@ -105,6 +105,18 @@ export const LIMITS = {
 
   /** Invitations — 10 per hour per org */
   invite: (orgId: string) => rateLimit(`invite:${orgId}`, { limit: 10, windowMs: 60 * 60_000 }),
+
+  /** Payment link generation — 20 per hour per org (prevent abuse) */
+  payment: (orgId: string) => rateLimit(`payment:${orgId}`, { limit: 20, windowMs: 60 * 60_000 }),
+
+  /** WhatsApp sends — 100 per hour per org (Twilio cost protection) */
+  whatsapp: (orgId: string) => rateLimit(`wa:${orgId}`, { limit: 100, windowMs: 60 * 60_000 }),
+
+  /** Webhook endpoints — 500 per minute per IP (high traffic allowed) */
+  webhook: (ip: string) => rateLimit(`webhook:${ip}`, { limit: 500, windowMs: 60_000 }),
+
+  /** Export endpoints — 5 per minute per user (prevent abuse) */
+  export: (userId: string) => rateLimit(`export:${userId}`, { limit: 5, windowMs: 60_000 }),
 } as const
 
 /** Add rate-limit headers to a response */
