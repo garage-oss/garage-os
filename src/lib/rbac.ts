@@ -19,6 +19,7 @@ export type AppModule =
   | 'intake'
   | 'mobile'
   | 'clock'
+  | 'admin'
 
 export type AppPermission = 'read' | 'create' | 'update' | 'delete'
 
@@ -53,6 +54,7 @@ export const ROLE_PERMISSIONS: Record<MemberRole, ModulePermissions> = {
     intake:      RC,
     mobile:      R,
     clock:       FULL,
+    admin:       FULL,
   },
 
   // ── Manager: full ops, can invite/manage team (not delete members) ─────────
@@ -183,6 +185,7 @@ export const MODULE_LABELS: Record<AppModule, string> = {
   intake:      'קבלת רכב',
   mobile:      'מצב טכנאי',
   clock:       'שעון נוכחות',
+  admin:       'ייבוא SQL',
 }
 
 export const PERMISSION_LABELS: Record<AppPermission, string> = {

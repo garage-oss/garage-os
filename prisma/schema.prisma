@@ -120,6 +120,22 @@ enum CommDirection {
   INBOUND
 }
 
+enum MigrationBatchStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+  ROLLED_BACK
+}
+
+enum MigrationLogAction {
+  CREATED
+  UPDATED
+  SKIPPED
+  FAILED
+  ROLLED_BACK
+}
+
 // ─── Org / Auth ───────────────────────────────────────────────────────────────
 
 model Organization {
@@ -158,6 +174,8 @@ model Organization {
   commLogs           CommLog[]
   paymentLinks       PaymentLink[]
   clockEntries       ClockEntry[]
+  migrationPresets   MigrationPreset[]
+  migrationBatches   MigrationBatch[]
 }
 
 model Membership {
@@ -647,4 +665,65 @@ model JobQueue {
   createdAt   DateTime  @default(now())
 
   @@index([status, runAt])
+}
+
+// ─── Migration Connector ──────────────────────────────────────────────────────
+//
+// Tracks mapping presets, import batches, and per-row logs for the
+// Hanesher SQL Server → GarageOS migration tool.
+
+model MigrationPreset {
+  id                String       @id @default(cuid())
+  organizationId    String
+  organization      Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name              String
+  sourceTable       String
+  targetEntity      String       // "customer"|"vehicle"|"supplier"|"part"|"work_order"|"invoice"|"quote"
+  columnMappings    Json         // ColumnMapping[]
+  filterSql         String?      // optional WHERE clause appended to source query
+  incrementalColumn String?      // e.g. "updated_at" — used for incremental sync
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+
+  @@index([organizationId])
+}
+
+model MigrationBatch {
+  id             String               @id @default(cuid())
+  organizationId String
+  organization   Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  userId         String?
+  userName       String?
+  status         MigrationBatchStatus @default(PENDING)
+  isDryRun       Boolean              @default(false)
+  isIncremental  Boolean              @default(false)
+  presetsUsed    Json                 // string[] of preset names
+  totalRows      Int                  @default(0)
+  imported       Int                  @default(0)
+  skipped        Int                  @default(0)
+  failed         Int                  @default(0)
+  rolledBack     Boolean              @default(false)
+  startedAt      DateTime?
+  completedAt    DateTime?
+  createdAt      DateTime             @default(now())
+
+  logs MigrationLog[]
+
+  @@index([organizationId, createdAt(sort: Desc)])
+}
+
+model MigrationLog {
+  id        String             @id @default(cuid())
+  batchId   String
+  batch     MigrationBatch     @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  entity    String             // "customer"|"vehicle"|etc.
+  sourceId  String?            // source PK value
+  targetId  String?            // GarageOS record id (when created)
+  action    MigrationLogAction
+  message   String?
+  rowData   Json?              // source row snapshot (for dry-run review)
+  createdAt DateTime           @default(now())
+
+  @@index([batchId, createdAt(sort: Desc)])
+  @@index([entity, action])
 }
