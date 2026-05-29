@@ -32,10 +32,13 @@ export default async function PortalHomePage({ params }: { params: { token: stri
   const v   = wo.vehicle
   const org = wo.organization
 
-  const pendingQuote   = wo.quote?.status === 'SENT'
-  const unpaidPayment  = wo.paymentLinks[0] && !wo.paymentLinks[0].paidAt
-  const customerNotes  = wo.techNotes
-  const totalPrice     = toNum(wo.totalPrice)
+  const pendingQuote       = wo.quote?.status === 'SENT'
+  const unpaidPayment      = wo.paymentLinks[0] && !wo.paymentLinks[0].paidAt
+  const customerNotes      = wo.techNotes
+  const totalPrice         = toNum(wo.totalPrice)
+  const qr                 = wo.quoteRequest ?? null
+  const hasActiveRequest   = !!qr && qr.status !== 'CANCELLED'
+  const canRequestQuote    = !wo.quote && !qr
 
   return (
     <div className="max-w-lg mx-auto px-4 pt-6 space-y-4">
@@ -105,34 +108,74 @@ export default async function PortalHomePage({ params }: { params: { token: stri
       </div>
 
       {/* ── Action CTAs ────────────────────────────────────────────────── */}
-      {(pendingQuote || unpaidPayment) && (
-        <div className="space-y-3">
-          {pendingQuote && (
-            <Link
-              href={`/portal/${params.token}/quote`}
-              className="flex items-center justify-between bg-amber-500 text-white px-5 py-4 rounded-2xl shadow-md shadow-amber-200 active:scale-[0.98] transition-transform min-h-[64px]"
-            >
-              <div>
-                <p className="font-bold text-base">📋 הצעת מחיר ממתינה לאישורך</p>
-                <p className="text-amber-100 text-sm">לחץ לצפייה ואישור</p>
-              </div>
-              <span className="text-2xl opacity-60">‹</span>
-            </Link>
-          )}
-          {unpaidPayment && (
-            <Link
-              href={`/portal/${params.token}/pay`}
-              className="flex items-center justify-between bg-indigo-600 text-white px-5 py-4 rounded-2xl shadow-md shadow-indigo-200 active:scale-[0.98] transition-transform min-h-[64px]"
-            >
-              <div>
-                <p className="font-bold text-base">💳 סכום לתשלום</p>
-                <p className="text-indigo-200 text-sm">{formatCurrency(toNum(wo.paymentLinks[0].amount))}</p>
-              </div>
-              <span className="text-2xl opacity-60">‹</span>
-            </Link>
-          )}
-        </div>
-      )}
+      <div className="space-y-3">
+
+        {/* Pending quote approval */}
+        {pendingQuote && (
+          <Link
+            href={`/portal/${params.token}/quote`}
+            className="flex items-center justify-between bg-amber-500 text-white px-5 py-4 rounded-2xl shadow-md shadow-amber-200 active:scale-[0.98] transition-transform min-h-[64px]"
+          >
+            <div>
+              <p className="font-bold text-base">📋 הצעת מחיר ממתינה לאישורך</p>
+              <p className="text-amber-100 text-sm">לחץ לצפייה ואישור</p>
+            </div>
+            <span className="text-2xl opacity-60">‹</span>
+          </Link>
+        )}
+
+        {/* Unpaid payment */}
+        {unpaidPayment && (
+          <Link
+            href={`/portal/${params.token}/pay`}
+            className="flex items-center justify-between bg-indigo-600 text-white px-5 py-4 rounded-2xl shadow-md shadow-indigo-200 active:scale-[0.98] transition-transform min-h-[64px]"
+          >
+            <div>
+              <p className="font-bold text-base">💳 סכום לתשלום</p>
+              <p className="text-indigo-200 text-sm">{formatCurrency(toNum(wo.paymentLinks[0].amount))}</p>
+            </div>
+            <span className="text-2xl opacity-60">‹</span>
+          </Link>
+        )}
+
+        {/* Quote request in-progress status */}
+        {hasActiveRequest && qr && !pendingQuote && (
+          <Link
+            href={`/portal/${params.token}/request-quote`}
+            className="flex items-center justify-between bg-white border border-indigo-200 px-5 py-4 rounded-2xl shadow-sm active:scale-[0.98] transition-transform min-h-[64px]"
+          >
+            <div>
+              {qr.status === 'REVIEWING' ? (
+                <>
+                  <p className="font-bold text-base text-indigo-700">🔍 הצעת המחיר בהכנה</p>
+                  <p className="text-slate-500 text-sm">המוסך מכין את הפרטים עבורך</p>
+                </>
+              ) : (
+                <>
+                  <p className="font-bold text-base text-slate-700">⏳ הבקשה התקבלה</p>
+                  <p className="text-slate-400 text-sm">הצעת המחיר נוצרת אוטומטית</p>
+                </>
+              )}
+            </div>
+            <span className="text-2xl opacity-40">‹</span>
+          </Link>
+        )}
+
+        {/* No quote yet — invite customer to request one */}
+        {canRequestQuote && (
+          <Link
+            href={`/portal/${params.token}/request-quote`}
+            className="flex items-center justify-between bg-gradient-to-l from-indigo-600 to-indigo-500 text-white px-5 py-4 rounded-2xl shadow-md shadow-indigo-200 active:scale-[0.98] transition-transform min-h-[64px]"
+          >
+            <div>
+              <p className="font-bold text-base">📋 בקש הצעת מחיר</p>
+              <p className="text-indigo-200 text-sm">הצעה אוטומטית תיווצר מיד</p>
+            </div>
+            <span className="text-2xl opacity-60">‹</span>
+          </Link>
+        )}
+
+      </div>
 
       {/* ── Work order info ────────────────────────────────────────────── */}
       <div className="bg-white rounded-3xl shadow-sm border border-slate-100 p-5 space-y-3">

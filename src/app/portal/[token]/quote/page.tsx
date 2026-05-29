@@ -86,6 +86,16 @@ export default async function QuotePage({ params }: { params: { token: string } 
         </div>
       </div>
 
+      {/* Estimate disclaimer */}
+      {q.isEstimate && (
+        <div className="bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3 flex items-start gap-2.5">
+          <span className="text-lg shrink-0">⚠️</span>
+          <p className="text-sm text-amber-700">
+            <strong>הצעה ראשונית — הערכה בלבד.</strong> המחיר הסופי עשוי להשתנות לאחר בדיקת הרכב.
+          </p>
+        </div>
+      )}
+
       {/* Notes */}
       {q.notes && (
         <div className="bg-white rounded-3xl shadow-sm border border-slate-100 p-5">

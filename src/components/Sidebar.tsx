@@ -7,6 +7,7 @@ import {
   LayoutDashboard, Users, Car, Wrench, Package, FileText,
   Settings, LogOut, Truck, Brain, Shield, UserCog,
   BarChart2, ClipboardList, Smartphone, Clock, DatabaseZap,
+  MessageSquare,
 } from 'lucide-react'
 import { signOut } from 'next-auth/react'
 import { PlanType, MemberRole } from '@prisma/client'
@@ -29,7 +30,8 @@ const ALL_NAV: NavItem[] = [
   { href: '/dashboard/work-orders', label: 'פקודות עבודה', icon: Wrench,          module: 'workOrders' },
   { href: '/dashboard/inventory',   label: 'מלאי',         icon: Package,         module: 'inventory'  },
   { href: '/dashboard/suppliers',   label: 'ספקים',        icon: Truck,           module: 'suppliers'  },
-  { href: '/dashboard/quotes',      label: 'הצעות מחיר',  icon: FileText,        module: 'quotes'     },
+  { href: '/dashboard/quotes',         label: 'הצעות מחיר',  icon: FileText,        module: 'quotes'     },
+  { href: '/dashboard/quote-requests', label: 'בקשות הצעה',  icon: MessageSquare,   module: 'quotes'     },
   { href: '/dashboard/diagnostics', label: 'אבחון AI',     icon: Brain,           module: 'diagnostics'},
   { href: '/dashboard/kpi',         label: 'לוח KPI',      icon: BarChart2,       module: 'kpi'        },
   { href: '/dashboard/staff',       label: 'צוות',         icon: UserCog,         module: 'users'      },

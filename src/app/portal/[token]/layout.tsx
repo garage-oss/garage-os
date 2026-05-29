@@ -10,8 +10,9 @@ export default async function PortalLayout({
 }) {
   const wo = await getPortalData(params.token)
 
-  const hasQuote = !!wo.quote && wo.quote.status !== 'DRAFT'
-  const hasPay   = wo.paymentLinks.length > 0 && !wo.paymentLinks[0].paidAt
+  const hasQuote        = !!wo.quote && wo.quote.status !== 'DRAFT'
+  const hasPay          = wo.paymentLinks.length > 0 && !wo.paymentLinks[0].paidAt
+  const hasQuoteRequest = !!wo.quoteRequest && wo.quoteRequest.status !== 'CANCELLED'
 
   return (
     <div
@@ -27,6 +28,7 @@ export default async function PortalLayout({
         token={params.token}
         hasQuote={hasQuote}
         hasPay={hasPay}
+        hasQuoteRequest={hasQuoteRequest}
       />
     </div>
   )

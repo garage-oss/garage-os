@@ -7,6 +7,7 @@ export type MediaFileData = {
   mimeType: string
   size: number
   url: string
+  phase: string | null
   uploadedBy: string | null
   createdAt: Date
 }

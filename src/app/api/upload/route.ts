@@ -23,6 +23,7 @@ export async function POST(req: NextRequest) {
     const file = formData.get('file') as File | null
     const entityType = formData.get('entityType') as string // 'workOrder' | 'vehicle' | 'quote'
     const entityId = formData.get('entityId') as string
+    const phase = formData.get('phase') as string | null    // 'before' | 'during' | 'after' | null
 
     if (!file) return NextResponse.json({ error: 'לא נבחר קובץ' }, { status: 400 })
     if (!entityType || !entityId) return NextResponse.json({ error: 'חסרים פרמטרים' }, { status: 400 })
@@ -53,6 +54,7 @@ export async function POST(req: NextRequest) {
     await writeFile(filePath, buffer)
 
     // Save metadata to DB
+    const VALID_PHASES = ['before', 'during', 'after']
     const mediaFile = await prisma.mediaFile.create({
       data: {
         filename: storedName,
@@ -60,6 +62,7 @@ export async function POST(req: NextRequest) {
         mimeType: file.type,
         size: file.size,
         url: publicUrl,
+        phase: phase && VALID_PHASES.includes(phase) ? phase : null,
         workOrderId: entityType === 'workOrder' ? entityId : null,
         vehicleId: entityType === 'vehicle' ? entityId : null,
         quoteId: entityType === 'quote' ? entityId : null,

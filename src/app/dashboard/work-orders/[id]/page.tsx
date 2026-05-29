@@ -307,33 +307,25 @@ export default function WorkOrderDetailPage({ params }: { params: { id: string }
 
       {/* ── TAB: MEDIA & NOTES ── */}
       {tab === 'media' && (
-        <div className="space-y-5">
-          {/* Upload */}
-          <div className="bg-[#1a1d27] border border-[#2e3147] rounded-xl p-5">
-            <h2 className="text-sm font-semibold text-[#8892a4] uppercase tracking-wide mb-4">העלאת קבצים</h2>
-            <FileUploader entityType="workOrder" entityId={wo.id} onUpload={loadMedia} />
-          </div>
+        <div className="space-y-4">
+          <FileUploader entityType="workOrder" entityId={wo.id} onUpload={loadMedia} />
 
-          {/* Gallery */}
-          <div className="bg-[#1a1d27] border border-[#2e3147] rounded-xl p-5">
-            <h2 className="text-sm font-semibold text-[#8892a4] uppercase tracking-wide mb-4">
-              קבצים מצורפים ({media.length})
-            </h2>
-            {!mediaLoaded ? (
-              <div className="flex justify-center py-8"><Loader2 size={20} className="animate-spin text-muted" /></div>
-            ) : (
-              <MediaGallery
-                files={media}
-                onDelete={(id) => setMedia((prev) => prev.filter((f) => f.id !== id))}
-              />
-            )}
-          </div>
+          {!mediaLoaded ? (
+            <div className="bg-[#1a1d27] border border-[#2e3147] rounded-2xl flex justify-center py-12">
+              <Loader2 size={20} className="animate-spin text-muted" />
+            </div>
+          ) : (
+            <MediaGallery
+              files={media}
+              onDelete={(id) => setMedia((prev) => prev.filter((f) => f.id !== id))}
+            />
+          )}
 
-          {/* Notes */}
-          <div className="bg-[#1a1d27] border border-[#2e3147] rounded-xl p-5">
-            <h2 className="text-sm font-semibold text-[#8892a4] uppercase tracking-wide mb-4">
+          {/* Technician notes */}
+          <div className="bg-[#1a1d27] border border-[#2e3147] rounded-2xl p-5">
+            <p className="text-[10px] font-bold text-[#8892a4] uppercase tracking-widest mb-4">
               פתקי טכנאי ({notes.length})
-            </h2>
+            </p>
             <NoteTimeline
               notes={notes}
               onDelete={(id) => setNotes((prev) => prev.filter((n) => n.id !== id))}

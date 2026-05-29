@@ -38,6 +38,19 @@ export async function getPortalData(workOrderId: string) {
         orderBy: { createdAt: 'desc' },
         take:    1,
       },
+      quoteRequest: {
+        select: {
+          id:          true,
+          serviceType: true,
+          description: true,
+          urgency:     true,
+          status:      true,
+          createdAt:   true,
+          media: {
+            select: { id: true, url: true, mimeType: true, originalName: true },
+          },
+        },
+      },
     },
   })
 
