@@ -3,15 +3,15 @@
 import { useEffect, useState, useTransition, useCallback } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { ChevronRight, Pencil, Trash2, Loader2, User, Car, Wrench, Clock, Paperclip, MessageCircle, Brain, CreditCard, Smartphone } from 'lucide-react'
+import { ChevronRight, Pencil, Trash2, Loader2, User, Car, Wrench, Clock, Paperclip, MessageCircle, Brain, CreditCard } from 'lucide-react'
 import { StatusBadge } from '@/components/work-orders/StatusBadge'
 import { StatusActions } from '@/components/work-orders/StatusActions'
+import { CustomerPortalShare } from '@/components/work-orders/CustomerPortalShare'
 import { FileUploader } from '@/components/media/FileUploader'
 import { MediaGallery, type MediaItem } from '@/components/media/MediaGallery'
 import { NoteTimeline, type NoteItem } from '@/components/notes/NoteTimeline'
 import { NoteForm } from '@/components/notes/NoteForm'
-import { MessageComposer } from '@/components/communication/MessageComposer'
-import { WhatsAppPanel } from '@/components/whatsapp/WhatsAppPanel'
+import { CommCenter } from '@/components/communication/CommCenter'
 import { PaymentLinkSection } from '@/components/payments/PaymentLinkSection'
 import { deleteWorkOrder } from '@/app/actions/work-orders'
 import { WorkOrderStatus } from '@prisma/client'
@@ -43,7 +43,7 @@ interface PayLinkItem {
   id: string; token: string; amount: number; paidAt: string | null; expiresAt: string | null; createdAt: string
 }
 
-type Tab = 'overview' | 'media' | 'communication' | 'whatsapp' | 'payment'
+type Tab = 'overview' | 'media' | 'communication' | 'payment'
 
 function fmt(n: number) {
   return `₪${n.toLocaleString('he-IL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
@@ -63,11 +63,10 @@ function InfoBox({ label, value }: { label: string; value: string | null | undef
 }
 
 const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
-  { id: 'overview',      label: 'סקירה',       icon: <Wrench size={13} /> },
-  { id: 'media',         label: 'מדיה ופתקים', icon: <Paperclip size={13} /> },
-  { id: 'communication', label: 'תקשורת',      icon: <MessageCircle size={13} /> },
-  { id: 'whatsapp',      label: 'WhatsApp',    icon: <Smartphone size={13} /> },
-  { id: 'payment',       label: 'תשלום',       icon: <CreditCard size={13} /> },
+  { id: 'overview',      label: 'סקירה',    icon: <Wrench size={13} /> },
+  { id: 'media',         label: 'מדיה',     icon: <Paperclip size={13} /> },
+  { id: 'communication', label: 'תקשורת',  icon: <MessageCircle size={13} /> },
+  { id: 'payment',       label: 'תשלום',   icon: <CreditCard size={13} /> },
 ]
 
 export default function WorkOrderDetailPage({ params }: { params: { id: string } }) {
@@ -81,7 +80,7 @@ export default function WorkOrderDetailPage({ params }: { params: { id: string }
   const [mediaLoaded,  setMediaLoaded] = useState(false)
   const [commLogs,     setCommLogs]    = useState<CommLogItem[]>([])
   const [payLinks,     setPayLinks]    = useState<PayLinkItem[]>([])
-  const [waLoaded,     setWaLoaded]    = useState(false)
+  const [commLoaded,   setCommLoaded]  = useState(false)
   const [payLoaded,    setPayLoaded]   = useState(false)
 
   useEffect(() => {
@@ -101,10 +100,17 @@ export default function WorkOrderDetailPage({ params }: { params: { id: string }
     setMediaLoaded(true)
   }, [params.id])
 
-  const loadWa = useCallback(async () => {
-    const res = await fetch(`/api/work-orders/${params.id}/comms`)
-    if (res.ok) setCommLogs(await res.json())
-    setWaLoaded(true)
+  // Communication tab loads both comms and pay-links so the timeline is complete.
+  // Pay tab re-uses the already-populated payLinks state (skipped if payLoaded).
+  const loadComm = useCallback(async () => {
+    const [cRes, pRes] = await Promise.all([
+      fetch(`/api/work-orders/${params.id}/comms`),
+      fetch(`/api/work-orders/${params.id}/payment-links`),
+    ])
+    if (cRes.ok) setCommLogs(await cRes.json())
+    if (pRes.ok) setPayLinks(await pRes.json())
+    setCommLoaded(true)
+    setPayLoaded(true)
   }, [params.id])
 
   const loadPay = useCallback(async () => {
@@ -114,10 +120,10 @@ export default function WorkOrderDetailPage({ params }: { params: { id: string }
   }, [params.id])
 
   useEffect(() => {
-    if (tab === 'media'    && !mediaLoaded) loadMedia()
-    if (tab === 'whatsapp' && !waLoaded)    loadWa()
-    if (tab === 'payment'  && !payLoaded)   loadPay()
-  }, [tab, mediaLoaded, waLoaded, payLoaded, loadMedia, loadWa, loadPay])
+    if (tab === 'media'         && !mediaLoaded) loadMedia()
+    if (tab === 'communication' && !commLoaded)  loadComm()
+    if (tab === 'payment'       && !payLoaded)   loadPay()
+  }, [tab, mediaLoaded, commLoaded, payLoaded, loadMedia, loadComm, loadPay])
 
   function handleDelete() {
     if (!confirm('האם למחוק את פקודת העבודה? פעולה זו אינה הפיכה.')) return
@@ -286,6 +292,12 @@ export default function WorkOrderDetailPage({ params }: { params: { id: string }
             <StatusActions workOrderId={wo.id} currentStatus={wo.status} />
           </div>
 
+          <CustomerPortalShare
+            workOrderId={wo.id}
+            customerName={wo.customer.name}
+            customerPhone={wo.customer.phone}
+          />
+
           <div className="flex gap-6 text-xs text-muted px-1">
             <span>נוצר: {fmtDate(wo.createdAt)}</span>
             <span>עודכן: {fmtDate(wo.updatedAt)}</span>
@@ -334,34 +346,22 @@ export default function WorkOrderDetailPage({ params }: { params: { id: string }
 
       {/* ── TAB: COMMUNICATION ── */}
       {tab === 'communication' && (
-        <MessageComposer
-          wo={{
-            id: wo.id,
-            workOrderNumber: wo.workOrderNumber,
-            status: wo.status,
-            totalPrice: wo.totalPrice,
-            customer: wo.customer,
-            vehicle: wo.vehicle,
-          }}
-        />
-      )}
-
-      {/* ── TAB: WHATSAPP ── */}
-      {tab === 'whatsapp' && (
-        !waLoaded ? (
+        !commLoaded ? (
           <div className="flex justify-center py-12"><Loader2 size={20} className="animate-spin text-muted" /></div>
         ) : (
-          <WhatsAppPanel
+          <CommCenter
             workOrderId={wo.id}
             customerId={wo.customer.id}
             customerName={wo.customer.name}
             customerPhone={wo.customer.phone}
+            customerEmail={wo.customer.email}
             workOrderNumber={wo.workOrderNumber}
             vehiclePlate={wo.vehicle.plate}
             vehicleDesc={`${wo.vehicle.year} ${wo.vehicle.make} ${wo.vehicle.model}`}
             garageName={wo.orgName ?? 'GarageOS'}
             status={wo.status}
             initialLogs={commLogs}
+            payLinks={payLinks}
             baseUrl={typeof window !== 'undefined' ? window.location.origin : ''}
           />
         )
