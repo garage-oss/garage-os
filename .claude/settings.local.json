@@ -28,7 +28,22 @@
       "Bash(node -e \"try { const Stripe = require\\('stripe'\\); const s = new Stripe\\('sk_test_x', {apiVersion: '2026-04-22.basil'}\\); console.log\\('ok'\\) } catch\\(e\\) { console.log\\(e.message\\) }\")",
       "Bash(node -e \"const Stripe = require\\('./node_modules/stripe'\\); console.log\\(Stripe.LATEST_API_VERSION\\)\")",
       "Bash(node -e \"const lib = require\\('./node_modules/stripe/cjs/lib'\\); console.log\\(Object.keys\\(lib\\).slice\\(0,10\\)\\)\")",
-      "Bash(xargs grep -l \"apiVersion\")"
+      "Bash(xargs grep -l \"apiVersion\")",
+      "Bash(taskkill /F /IM node.exe)",
+      "mcp__Claude_in_Chrome__tabs_context_mcp",
+      "Bash(curl -s -b \"next-auth.session-token=$\\(cat 'C:/garage-app/.next/session-token' || echo ''\\)\" http://localhost:3000/api/migration/debug-tables)",
+      "Bash(node -e ' *)",
+      "Bash(npx kill-port *)",
+      "Bash(npm run *)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:3000)",
+      "Bash(Get-ChildItem -Path C:\\\\garage-app -Recurse -File -Name)",
+      "Bash(Select-String -Pattern \"\\\\.\\(tsx?|prisma\\)$\")",
+      "Bash(xargs grep -l \"CommLog\\\\|CommunicationCenter\\\\|CustomerComm\")",
+      "Bash(dir \"C:\\\\garage-app\\\\src\\\\app\\\\dashboard\" /b)",
+      "Bash(dir \"C:\\\\garage-app\\\\src\\\\components\" /b)",
+      "Bash(echo \"PID: $!\")",
+      "Bash(curl -s http://localhost:3000 -o /dev/null -w \"%{http_code}\")",
+      "mcp__Claude_Preview__preview_start"
     ]
   }
 }
