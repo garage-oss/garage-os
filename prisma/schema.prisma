@@ -184,6 +184,8 @@ model Organization {
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 
+  defaultLaborRate   Decimal   @default(295) @db.Decimal(10, 2)
+
   members            Membership[]
   invitations        Invitation[]
   customers          Customer[]
@@ -202,6 +204,7 @@ model Organization {
   migrationPresets   MigrationPreset[]
   migrationBatches   MigrationBatch[]
   quoteRequests      QuoteRequest[]
+  aiQuoteAnalyses    AiQuoteAnalysis[]
 }
 
 model Membership {
@@ -375,6 +378,7 @@ model WorkOrder {
   quoteRequest         QuoteRequest?
   techNotes            TechnicianNote[]
   media                MediaFile[]
+  aiQuoteAnalyses      AiQuoteAnalysis[]
   diagnosticSessions   DiagnosticSession[]
   timeEntries          TimeEntry[]
   commLogs             CommLog[]
@@ -481,6 +485,7 @@ model Quote {
   isEstimate     Boolean      @default(false)
   items          QuoteItem[]
   media          MediaFile[]
+  aiAnalysis     AiQuoteAnalysis?
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 
@@ -785,4 +790,67 @@ model MigrationLog {
 
   @@index([batchId, createdAt(sort: Desc)])
   @@index([entity, action])
+}
+
+// ─── AI Quote Analysis ────────────────────────────────────────────────────────
+//
+// Stores every AI-powered complaint analysis: inputs, raw Claude response,
+// structured results, cost calculations, and the resulting Quote (if created).
+
+model AiQuoteAnalysis {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  // ── Context ──────────────────────────────────────────────────────────────
+  workOrderId    String?
+  workOrder      WorkOrder?   @relation(fields: [workOrderId], references: [id])
+  vehiclePlate   String?
+  vehicleMake    String?
+  vehicleModel   String?
+  vehicleYear    Int?
+  vehicleMileage Int?
+
+  // ── Input captured ───────────────────────────────────────────────────────
+  complaintText  String       @db.Text
+  photoUrls      Json         @default("[]")   // string[]
+
+  // ── AI raw response ───────────────────────────────────────────────────────
+  rawResponse    Json
+
+  // ── Structured AI output ──────────────────────────────────────────────────
+  diagnosis      String       @db.Text
+  confidence     Float                          // 0.0 – 1.0
+  urgency        String                         // low | medium | high | critical
+  laborOperations Json                          // LaborOperation[]
+  totalLaborHours Float
+  partsRecommended Json                         // PartRecommendation[]
+  additionalChecks Json        @default("[]")   // string[]
+  safetyWarning  String?
+  aiNotes        String?       @db.Text
+
+  // ── Cost calculation (snapshot of rates at analysis time) ─────────────────
+  laborRateUsed  Decimal       @db.Decimal(10, 2)
+  laborTotal     Decimal       @db.Decimal(10, 2)
+  partsTotal     Decimal       @db.Decimal(10, 2)
+  subtotal       Decimal       @db.Decimal(10, 2)
+  vatAmount      Decimal       @db.Decimal(10, 2)
+  totalEstimate  Decimal       @db.Decimal(10, 2)
+
+  // ── AI call metadata ───────────────────────────────────────────────────────
+  modelUsed      String        @default("claude-opus-4-5")
+  inputTokens    Int?
+  outputTokens   Int?
+  processingMs   Int?
+
+  // ── Resulting quote (set when staff creates the draft) ────────────────────
+  quoteId        String?       @unique
+  quote          Quote?        @relation(fields: [quoteId], references: [id])
+
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  @@index([organizationId])
+  @@index([organizationId, createdAt(sort: Desc)])
+  @@index([workOrderId])
 }
