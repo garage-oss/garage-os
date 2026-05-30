@@ -17,7 +17,6 @@ const STATUS_BG: Record<string, string> = {
   emerald: 'bg-emerald-50 border-emerald-200 text-emerald-700',
   red:     'bg-red-50     border-red-200     text-red-700',
 }
-
 const STATUS_DOT: Record<string, string> = {
   amber:   'bg-amber-500',
   indigo:  'bg-indigo-500',
@@ -32,13 +31,14 @@ export default async function PortalHomePage({ params }: { params: { token: stri
   const v   = wo.vehicle
   const org = wo.organization
 
-  const pendingQuote       = wo.quote?.status === 'SENT'
-  const unpaidPayment      = wo.paymentLinks[0] && !wo.paymentLinks[0].paidAt
-  const customerNotes      = wo.techNotes
-  const totalPrice         = toNum(wo.totalPrice)
-  const qr                 = wo.quoteRequest ?? null
-  const hasActiveRequest   = !!qr && qr.status !== 'CANCELLED'
-  const canRequestQuote    = !wo.quote && !qr
+  const pendingQuote      = wo.quote?.status === 'SENT'
+  const unpaidPayment     = wo.paymentLinks[0] && !wo.paymentLinks[0].paidAt
+  const customerNotes     = wo.techNotes
+  const totalPrice        = toNum(wo.totalPrice)
+  const qr                = wo.quoteRequest ?? null
+  const hasActiveRequest  = !!qr && qr.status !== 'CANCELLED'
+  const canRequestQuote   = !wo.quote && !qr
+  const hasCTAs           = pendingQuote || unpaidPayment || hasActiveRequest || canRequestQuote
 
   return (
     <div className="max-w-lg mx-auto px-4 pt-6 space-y-4">
@@ -47,16 +47,14 @@ export default async function PortalHomePage({ params }: { params: { token: stri
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           {org.logoUrl ? (
-            <img src={org.logoUrl} alt={org.name} className="w-12 h-12 rounded-2xl object-cover shadow-sm" />
+            <img src={org.logoUrl} alt={org.name} className="w-11 h-11 rounded-2xl object-cover shadow-sm" />
           ) : (
-            <div className="w-12 h-12 bg-indigo-600 rounded-2xl flex items-center justify-center shadow-md shadow-indigo-200">
-              <span className="text-white font-black text-xl">
-                {org.name.charAt(0)}
-              </span>
+            <div className="w-11 h-11 bg-indigo-600 rounded-2xl flex items-center justify-center shadow-md shadow-indigo-200">
+              <span className="text-white font-black text-lg">{org.name.charAt(0)}</span>
             </div>
           )}
           <div>
-            <h1 className="font-bold text-slate-900 text-lg leading-tight">{org.name}</h1>
+            <h1 className="font-bold text-slate-900 leading-tight">{org.name}</h1>
             {org.city && <p className="text-xs text-slate-500">{org.city}</p>}
           </div>
         </div>
@@ -73,12 +71,12 @@ export default async function PortalHomePage({ params }: { params: { token: stri
 
       {/* ── Status hero card ───────────────────────────────────────────── */}
       <div className="bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden">
-        {/* Status banner */}
-        <div className={`flex items-center gap-3 px-5 py-4 border-b ${STATUS_BG[st.color]}`}>
-          <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${STATUS_DOT[st.color]} ${wo.status !== 'COMPLETED' && wo.status !== 'CANCELLED' ? 'animate-pulse' : ''}`} />
+        {/* Status banner — description is now full opacity + larger */}
+        <div className={`flex items-start gap-3 px-5 py-4 border-b ${STATUS_BG[st.color]}`}>
+          <span className={`w-2.5 h-2.5 rounded-full shrink-0 mt-1.5 ${STATUS_DOT[st.color]} ${wo.status !== 'COMPLETED' && wo.status !== 'CANCELLED' ? 'animate-pulse' : ''}`} />
           <div className="flex-1">
-            <p className={`font-bold text-lg leading-tight`}>{st.label}</p>
-            <p className="text-sm opacity-75 mt-0.5">{st.description}</p>
+            <p className="font-bold text-xl leading-tight">{st.label}</p>
+            <p className="text-sm mt-1 leading-relaxed">{st.description}</p>
           </div>
         </div>
 
@@ -91,93 +89,98 @@ export default async function PortalHomePage({ params }: { params: { token: stri
       {/* ── Vehicle card ───────────────────────────────────────────────── */}
       <div className="bg-white rounded-3xl shadow-sm border border-slate-100 p-5">
         <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">הרכב שלך</p>
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-2xl font-bold text-slate-900">{v.make} {v.model}</p>
-            <p className="text-slate-500 text-sm mt-0.5">{v.year}{v.fuelType ? ` · ${FUEL_HE[v.fuelType] ?? v.fuelType}` : ''}{v.color ? ` · ${v.color}` : ''}</p>
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-2xl font-bold text-slate-900 truncate">{v.make} {v.model}</p>
+            <p className="text-slate-500 text-sm mt-0.5">
+              {v.year}{v.fuelType ? ` · ${FUEL_HE[v.fuelType] ?? v.fuelType}` : ''}{v.color ? ` · ${v.color}` : ''}
+            </p>
           </div>
-          <div className="text-left">
+          <div className="shrink-0 text-center">
             <div className="bg-indigo-600 text-white font-mono font-bold text-sm px-3 py-1.5 rounded-xl shadow-md shadow-indigo-200">
               {v.plate}
             </div>
             {v.mileage && (
-              <p className="text-xs text-slate-400 text-center mt-1">{v.mileage.toLocaleString('he-IL')} ק"מ</p>
+              <p className="text-xs text-slate-400 mt-1">{v.mileage.toLocaleString('he-IL')} ק&quot;מ</p>
             )}
           </div>
         </div>
       </div>
 
-      {/* ── Action CTAs ────────────────────────────────────────────────── */}
-      <div className="space-y-3">
+      {/* ── Action CTAs — only renders when there's something to show ──── */}
+      {hasCTAs && (
+        <div className="space-y-3">
 
-        {/* Pending quote approval */}
-        {pendingQuote && (
-          <Link
-            href={`/portal/${params.token}/quote`}
-            className="flex items-center justify-between bg-amber-500 text-white px-5 py-4 rounded-2xl shadow-md shadow-amber-200 active:scale-[0.98] transition-transform min-h-[64px]"
-          >
-            <div>
-              <p className="font-bold text-base">📋 הצעת מחיר ממתינה לאישורך</p>
-              <p className="text-amber-100 text-sm">לחץ לצפייה ואישור</p>
-            </div>
-            <span className="text-2xl opacity-60">‹</span>
-          </Link>
-        )}
+          {/* Quote waiting for approval */}
+          {pendingQuote && (
+            <Link
+              href={`/portal/${params.token}/quote`}
+              className="flex items-center justify-between bg-amber-500 text-white px-5 py-4 rounded-2xl shadow-md shadow-amber-200 active:scale-[0.98] transition-transform min-h-[64px]"
+            >
+              <div>
+                <p className="font-bold text-base">📋 הצעת מחיר ממתינה לאישורך</p>
+                <p className="text-amber-100 text-sm">לחץ/י לצפייה ואישור</p>
+              </div>
+              {/* RTL: › points right = "go to" in Hebrew apps */}
+              <span className="text-2xl opacity-70">›</span>
+            </Link>
+          )}
 
-        {/* Unpaid payment */}
-        {unpaidPayment && (
-          <Link
-            href={`/portal/${params.token}/pay`}
-            className="flex items-center justify-between bg-indigo-600 text-white px-5 py-4 rounded-2xl shadow-md shadow-indigo-200 active:scale-[0.98] transition-transform min-h-[64px]"
-          >
-            <div>
-              <p className="font-bold text-base">💳 סכום לתשלום</p>
-              <p className="text-indigo-200 text-sm">{formatCurrency(toNum(wo.paymentLinks[0].amount))}</p>
-            </div>
-            <span className="text-2xl opacity-60">‹</span>
-          </Link>
-        )}
+          {/* Unpaid payment */}
+          {unpaidPayment && (
+            <Link
+              href={`/portal/${params.token}/pay`}
+              className="flex items-center justify-between bg-indigo-600 text-white px-5 py-4 rounded-2xl shadow-md shadow-indigo-200 active:scale-[0.98] transition-transform min-h-[64px]"
+            >
+              <div>
+                <p className="font-bold text-base">💳 סכום לתשלום</p>
+                <p className="text-indigo-200 text-sm tabular-nums">{formatCurrency(toNum(wo.paymentLinks[0].amount))}</p>
+              </div>
+              <span className="text-2xl opacity-70">›</span>
+            </Link>
+          )}
 
-        {/* Quote request in-progress status */}
-        {hasActiveRequest && qr && !pendingQuote && (
-          <Link
-            href={`/portal/${params.token}/request-quote`}
-            className="flex items-center justify-between bg-white border border-indigo-200 px-5 py-4 rounded-2xl shadow-sm active:scale-[0.98] transition-transform min-h-[64px]"
-          >
-            <div>
-              {qr.status === 'REVIEWING' ? (
-                <>
-                  <p className="font-bold text-base text-indigo-700">🔍 הצעת המחיר בהכנה</p>
-                  <p className="text-slate-500 text-sm">המוסך מכין את הפרטים עבורך</p>
-                </>
-              ) : (
-                <>
-                  <p className="font-bold text-base text-slate-700">⏳ הבקשה התקבלה</p>
-                  <p className="text-slate-400 text-sm">הצעת המחיר נוצרת אוטומטית</p>
-                </>
-              )}
-            </div>
-            <span className="text-2xl opacity-40">‹</span>
-          </Link>
-        )}
+          {/* Quote request in-progress */}
+          {hasActiveRequest && qr && !pendingQuote && (
+            <Link
+              href={`/portal/${params.token}/request-quote`}
+              className="flex items-center justify-between bg-white border border-indigo-200 px-5 py-4 rounded-2xl shadow-sm active:scale-[0.98] transition-transform min-h-[64px]"
+            >
+              <div>
+                {qr.status === 'REVIEWING' ? (
+                  <>
+                    <p className="font-bold text-base text-indigo-700">🔍 הצעת המחיר בהכנה</p>
+                    <p className="text-slate-500 text-sm">הצוות מכין פרטים — יישלח בקרוב</p>
+                  </>
+                ) : (
+                  <>
+                    <p className="font-bold text-base text-slate-700">⏳ הבקשה התקבלה</p>
+                    <p className="text-slate-400 text-sm">הצעת המחיר נוצרת אוטומטית</p>
+                  </>
+                )}
+              </div>
+              <span className="text-2xl opacity-40">›</span>
+            </Link>
+          )}
 
-        {/* No quote yet — invite customer to request one */}
-        {canRequestQuote && (
-          <Link
-            href={`/portal/${params.token}/request-quote`}
-            className="flex items-center justify-between bg-gradient-to-l from-indigo-600 to-indigo-500 text-white px-5 py-4 rounded-2xl shadow-md shadow-indigo-200 active:scale-[0.98] transition-transform min-h-[64px]"
-          >
-            <div>
-              <p className="font-bold text-base">📋 בקש הצעת מחיר</p>
-              <p className="text-indigo-200 text-sm">הצעה אוטומטית תיווצר מיד</p>
-            </div>
-            <span className="text-2xl opacity-60">‹</span>
-          </Link>
-        )}
+          {/* Invite to request a quote */}
+          {canRequestQuote && (
+            <Link
+              href={`/portal/${params.token}/request-quote`}
+              className="flex items-center justify-between bg-gradient-to-l from-indigo-600 to-indigo-500 text-white px-5 py-4 rounded-2xl shadow-md shadow-indigo-200 active:scale-[0.98] transition-transform min-h-[64px]"
+            >
+              <div>
+                <p className="font-bold text-base">📋 בקש/י הצעת מחיר</p>
+                <p className="text-indigo-200 text-sm">הצעה אוטומטית תיווצר מיד</p>
+              </div>
+              <span className="text-2xl opacity-70">›</span>
+            </Link>
+          )}
 
-      </div>
+        </div>
+      )}
 
-      {/* ── Work order info ────────────────────────────────────────────── */}
+      {/* ── Work order info — WO number de-emphasised ──────────────────── */}
       <div className="bg-white rounded-3xl shadow-sm border border-slate-100 p-5 space-y-3">
         <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">פרטי הטיפול</p>
 
@@ -194,11 +197,6 @@ export default async function PortalHomePage({ params }: { params: { token: stri
           </div>
         )}
 
-        <div className="flex items-center justify-between text-sm pt-1 border-t border-slate-100">
-          <span className="text-slate-500">פקודה מס׳</span>
-          <span className="font-mono font-bold text-indigo-600">{wo.workOrderNumber}</span>
-        </div>
-
         {wo.assignedTechnician && (
           <div className="flex items-center justify-between text-sm">
             <span className="text-slate-500">טכנאי</span>
@@ -209,29 +207,37 @@ export default async function PortalHomePage({ params }: { params: { token: stri
         {wo.receivedAt && (
           <div className="flex items-center justify-between text-sm">
             <span className="text-slate-500">תאריך קבלה</span>
-            <span className="text-slate-700">{new Date(wo.receivedAt).toLocaleDateString('he-IL')}</span>
+            <span className="text-slate-700">
+              {new Date(wo.receivedAt).toLocaleDateString('he-IL', { day: '2-digit', month: 'long', year: 'numeric' })}
+            </span>
           </div>
         )}
 
         {totalPrice > 0 && (
           <div className="flex items-center justify-between text-sm pt-1 border-t border-slate-100">
             <span className="font-bold text-slate-700">עלות משוערת</span>
-            <span className="font-bold text-indigo-600 text-base">{formatCurrency(totalPrice)}</span>
+            <span className="font-bold text-indigo-600 text-base tabular-nums">{formatCurrency(totalPrice)}</span>
           </div>
         )}
+
+        {/* WO number — subtle, at the very bottom */}
+        <p className="text-[10px] text-slate-300 text-left tabular-nums pt-1">{wo.workOrderNumber}</p>
       </div>
 
-      {/* ── Technician notes (customer-visible) ───────────────────────── */}
+      {/* ── Technician notes ───────────────────────────────────────────── */}
       {customerNotes.length > 0 && (
-        <div className="bg-white rounded-3xl shadow-sm border border-slate-100 p-5 space-y-3">
+        <div className="bg-white rounded-3xl shadow-sm border border-slate-100 p-5 space-y-4">
           <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">עדכון מהטכנאי</p>
           {customerNotes.map(note => (
             <div key={note.id} className="flex gap-3">
               <div className="w-8 h-8 bg-indigo-100 rounded-full flex items-center justify-center shrink-0 text-sm">🔧</div>
-              <div>
+              <div className="flex-1">
                 <p className="text-slate-800 text-sm leading-relaxed">{note.content}</p>
                 <p className="text-xs text-slate-400 mt-1">
-                  {new Date(note.createdAt).toLocaleDateString('he-IL', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                  {new Date(note.createdAt).toLocaleDateString('he-IL', {
+                    day: '2-digit', month: 'short',
+                    hour: '2-digit', minute: '2-digit',
+                  })}
                 </p>
               </div>
             </div>
@@ -239,7 +245,7 @@ export default async function PortalHomePage({ params }: { params: { token: stri
         </div>
       )}
 
-      {/* ── Quick links ───────────────────────────────────────────────── */}
+      {/* ── Quick links (media count badge makes it useful) ────────────── */}
       <div className="grid grid-cols-2 gap-3">
         <Link
           href={`/portal/${params.token}/media`}
@@ -247,9 +253,9 @@ export default async function PortalHomePage({ params }: { params: { token: stri
         >
           <span className="text-3xl">📷</span>
           <span className="text-sm font-semibold text-slate-700">תמונות ווידאו</span>
-          {wo.media.length > 0 && (
-            <span className="text-xs text-slate-400">{wo.media.length} קבצים</span>
-          )}
+          <span className="text-xs text-slate-400">
+            {wo.media.length > 0 ? `${wo.media.length} קבצים` : 'אין עדיין'}
+          </span>
         </Link>
         <Link
           href={`/portal/${params.token}/history`}
@@ -257,6 +263,7 @@ export default async function PortalHomePage({ params }: { params: { token: stri
         >
           <span className="text-3xl">🕓</span>
           <span className="text-sm font-semibold text-slate-700">היסטוריית שירות</span>
+          <span className="text-xs text-slate-400">הצג טיפולים קודמים</span>
         </Link>
       </div>
 
