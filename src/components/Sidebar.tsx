@@ -32,7 +32,7 @@ const ALL_NAV: NavItem[] = [
   { href: '/dashboard/suppliers',   label: 'ספקים',        icon: Truck,           module: 'suppliers'  },
   { href: '/dashboard/quotes',         label: 'הצעות מחיר',  icon: FileText,        module: 'quotes'     },
   { href: '/dashboard/quote-requests', label: 'בקשות הצעה',  icon: MessageSquare,   module: 'quotes'     },
-  { href: '/dashboard/ai-quote',    label: 'הצעת מחיר AI', icon: Sparkles,        module: 'quotes'      },
+  { href: '/dashboard/ai-quotes',   label: 'הצעת מחיר AI', icon: Sparkles,        module: 'quotes'      },
   { href: '/dashboard/diagnostics', label: 'אבחון AI',     icon: Brain,           module: 'diagnostics'},
   { href: '/dashboard/kpi',         label: 'לוח KPI',      icon: BarChart2,       module: 'kpi'        },
   { href: '/dashboard/staff',       label: 'צוות',         icon: UserCog,         module: 'users'      },
