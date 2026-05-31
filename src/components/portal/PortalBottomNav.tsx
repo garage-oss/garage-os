@@ -10,23 +10,24 @@ interface Tab {
   exact?: boolean
 }
 
-export function PortalBottomNav({ token, hasQuote, hasPay, hasQuoteRequest }: {
-  token:           string
-  hasQuote:        boolean
-  hasPay:          boolean
-  hasQuoteRequest: boolean
+export function PortalBottomNav({ token, hasQuote, hasPay, hasQuoteRequest, canRequestQuote }: {
+  token:            string
+  hasQuote:         boolean
+  hasPay:           boolean
+  hasQuoteRequest:  boolean
+  canRequestQuote:  boolean
 }) {
   const pathname = usePathname()
   const base     = `/portal/${token}`
 
   const tabs: Tab[] = [
-    { href: base,                          icon: '🏠', label: 'בית',      exact: true },
-    { href: `${base}/timeline`,            icon: '📊', label: 'סטטוס'                  },
-    { href: `${base}/media`,               icon: '📷', label: 'תמונות'                 },
-    ...(hasQuote        ? [{ href: `${base}/quote`,         icon: '📋', label: 'הצעה'    }] : []),
-    ...(hasPay          ? [{ href: `${base}/pay`,           icon: '💳', label: 'תשלום'   }] : []),
-    ...(hasQuoteRequest ? [{ href: `${base}/request-quote`, icon: '📝', label: 'בקשה'    }] : []),
-    { href: `${base}/history`,             icon: '🕓', label: 'היסטוריה'              },
+    { href: base,                          icon: '🏠',  label: 'בית',      exact: true },
+    { href: `${base}/timeline`,            icon: '📊',  label: 'סטטוס'                  },
+    { href: `${base}/media`,               icon: '📷',  label: 'תמונות'                 },
+    ...(hasQuote                              ? [{ href: `${base}/quote`,         icon: '📋', label: 'הצעה'    }] : []),
+    ...(hasPay                                ? [{ href: `${base}/pay`,           icon: '💳', label: 'תשלום'   }] : []),
+    ...(hasQuoteRequest || canRequestQuote    ? [{ href: `${base}/request-quote`, icon: canRequestQuote ? '➕' : '📝', label: 'בקשה' }] : []),
+    { href: `${base}/history`,             icon: '🕓',  label: 'היסטוריה'              },
   ]
 
   return (

@@ -13,6 +13,7 @@ export default async function PortalLayout({
   const hasQuote        = !!wo.quote && wo.quote.status !== 'DRAFT'
   const hasPay          = wo.paymentLinks.length > 0 && !wo.paymentLinks[0].paidAt
   const hasQuoteRequest = !!wo.quoteRequest && wo.quoteRequest.status !== 'CANCELLED'
+  const canRequestQuote = !wo.quote && !wo.quoteRequest
 
   return (
     <div
@@ -29,6 +30,7 @@ export default async function PortalLayout({
         hasQuote={hasQuote}
         hasPay={hasPay}
         hasQuoteRequest={hasQuoteRequest}
+        canRequestQuote={canRequestQuote}
       />
     </div>
   )

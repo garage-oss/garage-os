@@ -43,14 +43,15 @@ const ALL_NAV: NavItem[] = [
 ]
 
 interface SidebarProps {
-  orgName?:    string
-  orgPlan?:    PlanType
-  memberRole?: MemberRole
-  userName?:   string
-  userEmail?:  string
+  orgName?:              string
+  orgPlan?:              PlanType
+  memberRole?:           MemberRole
+  userName?:             string
+  userEmail?:            string
+  pendingQuoteRequests?: number
 }
 
-export default function Sidebar({ orgName, orgPlan, memberRole, userName, userEmail }: SidebarProps) {
+export default function Sidebar({ orgName, orgPlan, memberRole, userName, userEmail, pendingQuoteRequests }: SidebarProps) {
   const pathname = usePathname()
 
   function isActive(href: string, exact?: boolean) {
@@ -92,7 +93,9 @@ export default function Sidebar({ orgName, orgPlan, memberRole, userName, userEm
       {/* Nav */}
       <nav className="flex-1 overflow-y-auto px-2 py-3 space-y-0.5">
         {visibleNav.map(({ href, label, icon: Icon, exact }) => {
-          const active = isActive(href, exact)
+          const active    = isActive(href, exact)
+          const isQR      = href === '/dashboard/quote-requests'
+          const badgeCount = isQR ? (pendingQuoteRequests ?? 0) : 0
           return (
             <Link
               key={href}
@@ -106,6 +109,11 @@ export default function Sidebar({ orgName, orgPlan, memberRole, userName, userEm
             >
               <Icon size={16} className="flex-shrink-0" />
               {label}
+              {badgeCount > 0 && (
+                <span className="mr-auto min-w-[18px] h-[18px] bg-red-500 text-white text-[10px] font-black rounded-full flex items-center justify-center leading-none px-1">
+                  {badgeCount > 9 ? '9+' : badgeCount}
+                </span>
+              )}
             </Link>
           )
         })}
