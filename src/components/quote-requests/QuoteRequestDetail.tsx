@@ -41,7 +41,7 @@ interface AiResult {
 type AiState =
   | { status: 'idle' }
   | { status: 'loading' }
-  | { status: 'done'; result: AiResult; analysisId: string }
+  | { status: 'done'; result: AiResult; analysisId: string; isMock: boolean }
   | { status: 'error'; message: string }
 
 const URGENCY_CFG: Record<string, { label: string; bg: string; text: string; bar: string }> = {
@@ -158,7 +158,10 @@ export function QuoteRequestDetail({ data }: { data: QuoteDetailData }) {
       })
       const json = await res.json()
       if (!res.ok) { setAi({ status: 'error', message: json.message ?? 'שגיאה לא ידועה' }); return }
-      setAi({ status: 'done', result: json.result, analysisId: json.analysisId })
+      setAi({ status: 'done', result: json.result, analysisId: json.analysisId, isMock: json.isMock ?? false })
+      // Auto-advance straight to supplier selection — one click does the full workflow
+      setAiExpanded(false)
+      setShowPartsPanel(true)
     } catch {
       setAi({ status: 'error', message: 'שגיאת רשת — נסה שוב' })
     }
@@ -260,6 +263,11 @@ export function QuoteRequestDetail({ data }: { data: QuoteDetailData }) {
                 הושלם
               </span>
             )}
+            {ai.status === 'done' && ai.isMock && (
+              <span className="text-[10px] bg-amber-500/10 text-amber-400 px-2 py-0.5 rounded-full font-bold border border-amber-500/20">
+                🎭 הדגמה
+              </span>
+            )}
           </div>
 
           <div className="flex items-center gap-2">
@@ -269,7 +277,7 @@ export function QuoteRequestDetail({ data }: { data: QuoteDetailData }) {
                 className="flex items-center gap-1.5 bg-[#6366f1] hover:bg-[#5558e8] text-white text-xs font-bold px-3.5 py-2 rounded-lg transition-colors"
               >
                 <Zap size={11} />
-                נתח עם AI
+                נתח עם AI וצור הצעת מחיר
               </button>
             )}
             {ai.status === 'error' && (
@@ -313,7 +321,7 @@ export function QuoteRequestDetail({ data }: { data: QuoteDetailData }) {
                 />
               ))}
             </div>
-            <p className="text-sm text-[#8892a4]">מנתח עם AI... (~15 שניות)</p>
+            <p className="text-sm text-[#8892a4]">מנתח תקלה ומכין הצעת מחיר...</p>
           </div>
         )}
 
