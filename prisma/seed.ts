@@ -322,6 +322,14 @@ async function main() {
   // Three seeded vehicles × 60,000 km major service
   // Rules: make/model/year/fuelType → items with price + labor hours
 
+  type SeedItem = {
+    id: string; category: string; nameHe: string
+    quantity: number; unitPrice: number; laborHours: number
+    required: boolean
+    priority?: string   // 'REQUIRED' | 'RECOMMENDED' | 'SAFETY'  (defaults to 'REQUIRED')
+    notes?: string; sortOrder: number
+  }
+
   // Helper to create a schedule + items atomically
   async function upsertSchedule(
     id: string,
@@ -331,11 +339,7 @@ async function main() {
       fuelType?: string; transmission?: string
       intervalKm: number; intervalMonths?: number; notes?: string
     },
-    items: Array<{
-      id: string; category: string; nameHe: string
-      quantity: number; unitPrice: number; laborHours: number
-      required: boolean; notes?: string; sortOrder: number
-    }>,
+    items: SeedItem[],
   ) {
     await prisma.maintenanceSchedule.upsert({
       where:  { id },
@@ -345,8 +349,75 @@ async function main() {
     for (const item of items) {
       await prisma.maintenanceItem.upsert({
         where:  { id: item.id },
-        update: {},
-        create: { ...item, scheduleId: id },
+        update: { priority: item.priority ?? 'REQUIRED' },
+        create: { ...item, priority: item.priority ?? 'REQUIRED', scheduleId: id },
+      })
+    }
+  }
+
+  // Helper: add shared RECOMMENDED + SAFETY items to a schedule
+  // fuelType: 'GASOLINE' | 'DIESEL' | 'HYBRID' — drives injector vs. AdBlue item
+  async function addAdvisorItems(scheduleId: string, prefix: string, fuelType: string) {
+    const isGasOrHybrid = fuelType === 'GASOLINE' || fuelType === 'HYBRID'
+
+    const rec: SeedItem[] = [
+      // ── RECOMMENDED ─────────────────────────────────────────────────────────
+      {
+        id: `${prefix}-rec-bat`,
+        category: 'BATTERY', nameHe: 'בדיקת מצבר ועיבוי מוליכים',
+        quantity: 1, unitPrice: 45, laborHours: 0.25,
+        required: false, priority: 'RECOMMENDED', sortOrder: 30,
+        notes: 'ממוצע חיי מצבר — 4-5 שנים. מומלץ לבדיקה ב-60,000 ק״מ',
+      },
+      {
+        id: `${prefix}-rec-align`,
+        category: 'ALIGNMENT', nameHe: 'בדיקת יישור גלגלים',
+        quantity: 1, unitPrice: 95, laborHours: 0.5,
+        required: false, priority: 'RECOMMENDED', sortOrder: 31,
+        notes: 'מאריך חיי צמיגים. מומלץ לבדיקה לאחר כל 30,000 ק״מ',
+      },
+      {
+        id: `${prefix}-rec-inject`,
+        category: isGasOrHybrid ? 'INJECTOR_CLEAN' : 'FILTER_FUEL',
+        nameHe: isGasOrHybrid ? 'ניקוי מזרקי דלק בלחץ (GDI)' : 'בדיקת מערכת AdBlue / SCR',
+        quantity: 1, unitPrice: isGasOrHybrid ? 180 : 90, laborHours: isGasOrHybrid ? 0.75 : 0.25,
+        required: false, priority: 'RECOMMENDED', sortOrder: 32,
+        notes: isGasOrHybrid
+          ? 'מומלץ במנועי GDI/TFSI/TSI — מונע הצטברות פחם על שסתומים'
+          : 'בדיקת אינדיקטור AdBlue ומילוי אם נדרש',
+      },
+    ]
+
+    const safe: SeedItem[] = [
+      // ── SAFETY ──────────────────────────────────────────────────────────────
+      {
+        id: `${prefix}-saf-brkpads`,
+        category: 'BRAKE_PADS', nameHe: 'רפידות בלם קדמיות — מוחלפות אם מתחת ל-3מ״מ',
+        quantity: 1, unitPrice: 320, laborHours: 1.5,
+        required: false, priority: 'SAFETY', sortOrder: 60,
+        notes: 'גבול מינימלי לפי תקן: 2מ״מ — נדרש בדיקה פיזית',
+      },
+      {
+        id: `${prefix}-saf-tires`,
+        category: 'TIRES', nameHe: 'צמיגים — פחות מ-1.6מ״מ חריץ מחייב החלפה',
+        quantity: 1, unitPrice: 0, laborHours: 0.25,
+        required: false, priority: 'SAFETY', sortOrder: 61,
+        notes: 'חריץ מינימלי חוקי: 1.6מ״מ — בדיקה חיונית לפני חורף',
+      },
+      {
+        id: `${prefix}-saf-susp`,
+        category: 'SUSPENSION', nameHe: 'גומיות מתלים סדוקות — פגיעה ביציבות הרכב',
+        quantity: 1, unitPrice: 180, laborHours: 0.75,
+        required: false, priority: 'SAFETY', sortOrder: 62,
+        notes: 'גומיות שחוקות גורמות לרעש ולחוסר יציבות בתנועה',
+      },
+    ]
+
+    for (const item of [...rec, ...safe]) {
+      await prisma.maintenanceItem.upsert({
+        where:  { id: item.id },
+        update: { priority: item.priority! },
+        create: { ...item, priority: item.priority!, scheduleId },
       })
     }
   }
@@ -471,6 +542,23 @@ async function main() {
     { id: 'mi-gen-hyb-brake',      category: 'BRAKE_FLUID',  nameHe: 'נוזל בלמים DOT 3',                  quantity: 1, unitPrice:  50, laborHours: 0.25, required: true,  sortOrder: 5 },
     { id: 'mi-gen-hyb-insp',       category: 'INSPECTION',   nameHe: 'בדיקת מערכות היברידיות ומתלים',     quantity: 1, unitPrice:   0, laborHours: 0.40, required: true,  sortOrder: 6 },
   ])
+
+  // ── Service Advisor items (RECOMMENDED + SAFETY) for all 7 schedules ──────
+  await addAdvisorItems('sched-skoda-octavia-gas-60k',   'mi-skoda-gas',   'GASOLINE')
+  await addAdvisorItems('sched-skoda-octavia-diesel-60k','mi-skoda-die',   'DIESEL')
+  await addAdvisorItems('sched-corolla-hybrid-60k',      'mi-corolla-hyb', 'HYBRID')
+  await addAdvisorItems('sched-sportage-gas-60k',        'mi-sportage',    'GASOLINE')
+  await addAdvisorItems('sched-generic-gas-60k',         'mi-gen-gas',     'GASOLINE')
+  await addAdvisorItems('sched-generic-diesel-60k',      'mi-gen-die',     'DIESEL')
+  await addAdvisorItems('sched-generic-hybrid-60k',      'mi-gen-hyb',     'HYBRID')
+
+  // Also correct existing optional items to proper RECOMMENDED priority
+  for (const id of ['mi-corolla-hyb-cvt', 'mi-sportage-dct']) {
+    await prisma.maintenanceItem.updateMany({
+      where:  { id },
+      data:   { priority: 'RECOMMENDED' },
+    })
+  }
 
   // ── Quote Requests (PERIODIC_SERVICE demo records) ───────────────────────
   // Requires dedicated work orders so the workOrderId unique constraint is met.

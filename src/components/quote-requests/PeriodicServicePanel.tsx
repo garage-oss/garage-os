@@ -6,11 +6,14 @@
  * Replaces the generic AI analysis panel for PERIODIC_SERVICE quote requests.
  *
  * Flow:
- *  1. INPUT  — plate (read-only), mileage input, missing fields (fuel/trans)
+ *  1. INPUT   — plate (read-only), mileage input, optional fuel/trans selectors
  *  2. LOADING — calls /api/periodic-quote
- *  3. RESULT  — structured maintenance quote with items, totals, disclaimer
+ *  3. RESULT  — three-section service advisor layout:
+ *               ✅ REQUIRED     — manufacturer mandated, always included
+ *               💡 RECOMMENDED  — advisor upsell, one-click add, revenue counter
+ *               ⚠️  SAFETY       — safety-critical findings, red-badge items
  *
- * The engine is 100% rule-based. AI does NOT override schedule items.
+ * The engine is 100% rule-based. AI does NOT generate or override schedule items.
  */
 
 import { useState }        from 'react'
@@ -20,6 +23,7 @@ import {
   CATEGORY_LABELS,
   LABOR_RATE_ILS,
   VAT_RATE,
+  groupByPriority,
 } from '@/lib/maintenance-schedule'
 import type { ScheduleResult, ServiceItem } from '@/lib/maintenance-schedule'
 import type { QuoteItemEdit }               from '@/app/actions/quote-request'
@@ -33,6 +37,10 @@ import {
   Loader2,
   Info,
   RotateCcw,
+  Plus,
+  X,
+  ShieldAlert,
+  TrendingUp,
 } from 'lucide-react'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -84,6 +92,14 @@ const TRANS_LABELS: Record<string, string> = {
   CVT:       'CVT',
 }
 
+// ─── Local helpers ────────────────────────────────────────────────────────────
+
+function r2(n: number) { return Math.round(n * 100) / 100 }
+
+function itemCost(item: ServiceItem): number {
+  return r2(item.unitPrice * item.quantity + item.laborHours * LABOR_RATE_ILS)
+}
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export function PeriodicServicePanel({
@@ -93,18 +109,41 @@ export function PeriodicServicePanel({
   onConfirm,
 }: PeriodicServicePanelProps) {
   // ── Form state ──────────────────────────────────────────────────────────────
-  const [mileage,     setMileage]      = useState(vehicle.mileage ? String(vehicle.mileage) : '')
-  const [fuelType,    setFuelType]     = useState(vehicle.fuelType     ?? '')
+  const [mileage,      setMileage]      = useState(vehicle.mileage ? String(vehicle.mileage) : '')
+  const [fuelType,     setFuelType]     = useState(vehicle.fuelType     ?? '')
   const [transmission, setTransmission] = useState(vehicle.transmission ?? '')
 
   // ── Panel state ─────────────────────────────────────────────────────────────
-  const [state,       setState]        = useState<PanelState>({ phase: 'input' })
-  const [optExpanded, setOptExpanded]  = useState<Record<number, boolean>>({})
-  const [confirmed,   setConfirmed]    = useState(false)
+  const [state,         setState]        = useState<PanelState>({ phase: 'input' })
+  const [confirmed,     setConfirmed]    = useState(false)
+  const [selectedRec,   setSelectedRec]  = useState<Set<number>>(new Set())
+  const [selectedSafe,  setSelectedSafe] = useState<Set<number>>(new Set())
+  const [expandedNotes, setExpandedNotes] = useState<Record<string, boolean>>({})
 
   // ── Field visibility ────────────────────────────────────────────────────────
   const needsFuel  = !vehicle.fuelType
   const needsTrans = !vehicle.transmission
+
+  // ── Toggle helpers ──────────────────────────────────────────────────────────
+  function toggleRec(idx: number) {
+    setSelectedRec(prev => {
+      const next = new Set(prev)
+      next.has(idx) ? next.delete(idx) : next.add(idx)
+      return next
+    })
+  }
+
+  function toggleSafe(idx: number) {
+    setSelectedSafe(prev => {
+      const next = new Set(prev)
+      next.has(idx) ? next.delete(idx) : next.add(idx)
+      return next
+    })
+  }
+
+  function toggleNote(key: string) {
+    setExpandedNotes(prev => ({ ...prev, [key]: !prev[key] }))
+  }
 
   // ── Generate quote ──────────────────────────────────────────────────────────
   async function generate() {
@@ -112,6 +151,9 @@ export function PeriodicServicePanel({
     if (!km || km < 0) return
 
     setState({ phase: 'loading' })
+    setSelectedRec(new Set())
+    setSelectedSafe(new Set())
+    setExpandedNotes({})
 
     try {
       const res = await fetch('/api/periodic-quote', {
@@ -142,30 +184,45 @@ export function PeriodicServicePanel({
   function handleConfirm() {
     if (state.phase !== 'result') return
     const { schedule } = state.data
+    const groups = groupByPriority(schedule.items)
 
-    const items: QuoteItemEdit[] = schedule.items
-      .filter(i => i.required && i.category !== 'INSPECTION')
-      .map(i => ({
-        description: i.nameHe + (i.notes ? ` — ${i.notes}` : ''),
-        quantity:    i.quantity,
-        unitPrice:   i.unitPrice,
-        total:       Math.round(i.quantity * i.unitPrice * 100) / 100,
-      }))
+    const selRecItems  = groups.recommended.filter((_, idx) => selectedRec.has(idx))
+    const selSafeItems = groups.safety.filter((_, idx) => selectedSafe.has(idx))
 
-    const optItems = schedule.items.filter(i => !i.required && i.category !== 'INSPECTION')
+    // All items that are being included (required always, selected optional)
+    const allIncluded = [...groups.required, ...selRecItems, ...selSafeItems]
 
+    // Line items exclude INSPECTION (labor-only service)
+    const partItems = allIncluded.filter(i => i.category !== 'INSPECTION')
+
+    const items: QuoteItemEdit[] = partItems.map(i => ({
+      description: i.nameHe + (i.notes ? ` — ${i.notes}` : ''),
+      quantity:    i.quantity,
+      unitPrice:   i.unitPrice,
+      total:       r2(i.quantity * i.unitPrice),
+    }))
+
+    // Total labor including inspection hours
+    const totalLaborHours = r2(allIncluded.reduce((s, i) => s + i.laborHours, 0))
+
+    // Build work notes
+    const km = parseInt(mileage, 10)
     const noteLines: string[] = [
       `${schedule.intervalLabel} — ${vehicle.make} ${vehicle.model} ${vehicle.year}`,
+      `ק״מ נוכחי: ${km.toLocaleString('he-IL')}`,
       '',
-      'פירוט עבודה:',
-      ...schedule.items
-        .filter(i => i.required)
-        .map(i => `• ${i.nameHe} — ${i.laborHours} שע׳`),
+      'פריטים נדרשים (לפי יצרן):',
+      ...groups.required.map(i => `• ${i.nameHe} — ${i.laborHours} שע׳`),
     ]
 
-    if (optItems.length > 0) {
-      noteLines.push('', 'פריטים אופציונליים (לא נכללו במחיר):')
-      optItems.forEach(i => noteLines.push(`• ${i.nameHe}${i.notes ? ` — ${i.notes}` : ''}`))
+    if (selRecItems.length > 0) {
+      noteLines.push('', 'פריטים מומלצים שנוספו:')
+      selRecItems.forEach(i => noteLines.push(`• ${i.nameHe}${i.notes ? ` — ${i.notes}` : ''}`))
+    }
+
+    if (selSafeItems.length > 0) {
+      noteLines.push('', 'התראות בטיחות שנבחרו:')
+      selSafeItems.forEach(i => noteLines.push(`• ${i.nameHe}${i.notes ? ` — ${i.notes}` : ''}`))
     }
 
     noteLines.push(
@@ -177,13 +234,16 @@ export function PeriodicServicePanel({
       noteLines.push('', `הערות: ${schedule.scheduleNotes}`)
     }
 
-    onConfirm(items, noteLines.join('\n'), schedule.requiredLaborHours)
+    onConfirm(items, noteLines.join('\n'), totalLaborHours)
     setConfirmed(true)
   }
 
   function reset() {
     setState({ phase: 'input' })
     setConfirmed(false)
+    setSelectedRec(new Set())
+    setSelectedSafe(new Set())
+    setExpandedNotes({})
   }
 
   // ─── Render ──────────────────────────────────────────────────────────────────
@@ -359,16 +419,32 @@ export function PeriodicServicePanel({
       )}
 
       {/* ════════════════════════════════════════════════════════════════════════
-          PHASE 4: RESULT
+          PHASE 4: RESULT — THREE-SECTION SERVICE ADVISOR LAYOUT
       ════════════════════════════════════════════════════════════════════════ */}
       {state.phase === 'result' && (() => {
         const { schedule, usedFuelType, usedTransmission } = state.data
-        const km = parseInt(mileage, 10)
+        const km     = parseInt(mileage, 10)
+        const groups = groupByPriority(schedule.items)
+
+        // Compute additional cost for selected optional items
+        const selRecItems  = groups.recommended.filter((_, idx) => selectedRec.has(idx))
+        const selSafeItems = groups.safety.filter((_, idx) => selectedSafe.has(idx))
+        const allSelected  = [...selRecItems, ...selSafeItems]
+
+        const additionalParts     = r2(allSelected.reduce((s, i) => s + i.unitPrice * i.quantity, 0))
+        const additionalLaborCost = r2(allSelected.reduce((s, i) => s + i.laborHours * LABOR_RATE_ILS, 0))
+        const additionalSubtotal  = r2(additionalParts + additionalLaborCost)
+        const additionalVat       = r2(additionalSubtotal * VAT_RATE)
+        const additionalTotal     = r2(additionalSubtotal + additionalVat)
+
+        const grandSubtotal = r2(schedule.subtotal + additionalSubtotal)
+        const grandVat      = r2(grandSubtotal * VAT_RATE)
+        const grandTotal    = r2(grandSubtotal + grandVat)
 
         return (
           <div className="px-5 pt-4 pb-5 space-y-5">
 
-            {/* ── Service badge ───────────────────────────────────────────── */}
+            {/* ── Service badge ──────────────────────────────────────────── */}
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2.5">
                 <span className="text-2xl">🔧</span>
@@ -376,13 +452,11 @@ export function PeriodicServicePanel({
                   <p className="text-base font-black text-[#e2e8f0]">{schedule.intervalLabel}</p>
                   <p className="text-xs text-[#4a5270] mt-0.5">
                     ק״מ נוכחי: {km.toLocaleString('he-IL')}
-                    {usedFuelType && ` · ${FUEL_LABELS[usedFuelType] ?? usedFuelType}`}
+                    {usedFuelType     && ` · ${FUEL_LABELS[usedFuelType]  ?? usedFuelType}`}
                     {usedTransmission && ` · ${TRANS_LABELS[usedTransmission] ?? usedTransmission}`}
                   </p>
                 </div>
               </div>
-
-              {/* Generic warning badge */}
               {schedule.isGeneric && (
                 <span className="text-[10px] font-bold text-amber-400 border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 rounded-full shrink-0">
                   לוח כללי
@@ -390,7 +464,7 @@ export function PeriodicServicePanel({
               )}
             </div>
 
-            {/* Match note (if partial match) */}
+            {/* Match note */}
             {schedule.matchNote && (
               <div className="flex items-start gap-2 bg-amber-500/8 border border-amber-500/20 rounded-xl px-3.5 py-2.5">
                 <Info size={13} className="text-amber-400 shrink-0 mt-0.5" />
@@ -398,25 +472,109 @@ export function PeriodicServicePanel({
               </div>
             )}
 
-            {/* ── Items table ─────────────────────────────────────────────── */}
+            {/* ══════════════════════════════════════════════════════════════
+                SECTION 1 — REQUIRED (manufacturer mandated)
+            ══════════════════════════════════════════════════════════════ */}
             <div>
-              <p className="text-[10px] font-bold text-[#4a5270] uppercase tracking-[0.12em] mb-2.5">
-                פריטי הטיפול
-              </p>
+              <div className="flex items-center justify-between mb-2.5">
+                <p className="text-[10px] font-bold text-emerald-400 uppercase tracking-[0.12em] flex items-center gap-1.5">
+                  <CheckCircle2 size={11} />
+                  נדרש על ידי יצרן
+                </p>
+                <span className="text-[10px] text-[#4a5270] font-mono">
+                  בסיס: {formatCurrency(schedule.total)}
+                </span>
+              </div>
+
               <div className="space-y-1.5">
-                {schedule.items.map((item, idx) => (
-                  <ItemRow
+                {groups.required.map((item, idx) => (
+                  <RequiredItemRow
                     key={idx}
                     item={item}
-                    laborRate={LABOR_RATE_ILS}
-                    expanded={!!optExpanded[idx]}
-                    onToggle={() => setOptExpanded(p => ({ ...p, [idx]: !p[idx] }))}
+                    noteKey={`req-${idx}`}
+                    expanded={!!expandedNotes[`req-${idx}`]}
+                    onToggleNote={() => toggleNote(`req-${idx}`)}
                   />
                 ))}
               </div>
             </div>
 
-            {/* ── Labor summary ────────────────────────────────────────────── */}
+            {/* ══════════════════════════════════════════════════════════════
+                SECTION 2 — RECOMMENDED (advisor upsell)
+            ══════════════════════════════════════════════════════════════ */}
+            {groups.recommended.length > 0 && (
+              <div>
+                <div className="flex items-center justify-between mb-2.5">
+                  <p className="text-[10px] font-bold text-blue-400 uppercase tracking-[0.12em] flex items-center gap-1.5">
+                    💡 מומלץ על ידי יועץ השירות
+                  </p>
+                  {selectedRec.size > 0 && (
+                    <span className="flex items-center gap-1 text-[10px] font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full">
+                      <TrendingUp size={9} />
+                      +{formatCurrency(r2([...selRecItems].reduce((s, i) => s + itemCost(i) * (1 + VAT_RATE), 0)))}
+                    </span>
+                  )}
+                </div>
+
+                <div className="space-y-1.5">
+                  {groups.recommended.map((item, idx) => {
+                    const isSelected = selectedRec.has(idx)
+                    return (
+                      <RecommendedItemRow
+                        key={idx}
+                        item={item}
+                        selected={isSelected}
+                        noteKey={`rec-${idx}`}
+                        expanded={!!expandedNotes[`rec-${idx}`]}
+                        onToggle={() => toggleRec(idx)}
+                        onToggleNote={() => toggleNote(`rec-${idx}`)}
+                      />
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* ══════════════════════════════════════════════════════════════
+                SECTION 3 — SAFETY (red-badge items)
+            ══════════════════════════════════════════════════════════════ */}
+            {groups.safety.length > 0 && (
+              <div>
+                <div className="flex items-center justify-between mb-2.5">
+                  <p className="text-[10px] font-bold text-red-400 uppercase tracking-[0.12em] flex items-center gap-1.5">
+                    <ShieldAlert size={11} />
+                    התראות בטיחות
+                  </p>
+                  {selectedSafe.size > 0 && (
+                    <span className="flex items-center gap-1 text-[10px] font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full">
+                      <TrendingUp size={9} />
+                      +{formatCurrency(r2([...selSafeItems].reduce((s, i) => s + itemCost(i) * (1 + VAT_RATE), 0)))}
+                    </span>
+                  )}
+                </div>
+
+                <div className="space-y-1.5">
+                  {groups.safety.map((item, idx) => {
+                    const isSelected = selectedSafe.has(idx)
+                    return (
+                      <SafetyItemRow
+                        key={idx}
+                        item={item}
+                        selected={isSelected}
+                        noteKey={`safe-${idx}`}
+                        expanded={!!expandedNotes[`safe-${idx}`]}
+                        onToggle={() => toggleSafe(idx)}
+                        onToggleNote={() => toggleNote(`safe-${idx}`)}
+                      />
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* ══════════════════════════════════════════════════════════════
+                FINANCIAL SUMMARY
+            ══════════════════════════════════════════════════════════════ */}
             <div className="bg-[#1a1d27] border border-[#252836] rounded-xl px-4 py-3 space-y-1.5">
               <p className="text-[10px] font-bold text-[#4a5270] uppercase tracking-[0.12em] mb-2">
                 סיכום עלויות
@@ -427,24 +585,45 @@ export function PeriodicServicePanel({
                 <span className="font-mono">{formatCurrency(schedule.laborTotal)}</span>
               </div>
               <div className="flex justify-between text-xs text-[#8892a4]">
-                <span>חלקים</span>
+                <span>חלקים (נדרשים)</span>
                 <span className="font-mono">{formatCurrency(schedule.partsTotal)}</span>
               </div>
+
+              {additionalSubtotal > 0 && (
+                <>
+                  <div className="border-t border-[#252836] mt-1.5 pt-1.5" />
+                  <div className="flex justify-between text-xs text-emerald-400">
+                    <span className="flex items-center gap-1">
+                      <TrendingUp size={10} />
+                      תוספות שנבחרו ({allSelected.length} פריטים)
+                    </span>
+                    <span className="font-mono font-bold">+{formatCurrency(additionalSubtotal)}</span>
+                  </div>
+                </>
+              )}
+
               <div className="flex justify-between text-xs text-[#8892a4] border-t border-[#252836] pt-1.5 mt-1.5">
                 <span>לפני מע״מ</span>
-                <span className="font-mono">{formatCurrency(schedule.subtotal)}</span>
+                <span className="font-mono">{formatCurrency(grandSubtotal)}</span>
               </div>
               <div className="flex justify-between text-xs text-[#8892a4]">
                 <span>מע״מ 17%</span>
-                <span className="font-mono">{formatCurrency(schedule.vat)}</span>
+                <span className="font-mono">{formatCurrency(grandVat)}</span>
               </div>
               <div className="flex justify-between font-black text-sm text-emerald-400 border-t border-[#252836] pt-2 mt-1">
                 <span>סה״כ כולל מע״מ</span>
-                <span className="font-mono">{formatCurrency(schedule.total)}</span>
+                <span className="font-mono">{formatCurrency(grandTotal)}</span>
               </div>
+
+              {additionalTotal > 0 && (
+                <div className="flex justify-between text-[10px] text-emerald-500/70 pt-0.5">
+                  <span>מתוכם הכנסה נוספת</span>
+                  <span className="font-mono">+{formatCurrency(additionalTotal)}</span>
+                </div>
+              )}
             </div>
 
-            {/* ── Schedule notes ───────────────────────────────────────────── */}
+            {/* ── Schedule notes ─────────────────────────────────────────── */}
             {schedule.scheduleNotes && (
               <div className="bg-[#1a1d27] border border-[#252836] rounded-xl px-4 py-3">
                 <p className="text-[10px] font-bold text-[#4a5270] uppercase tracking-[0.12em] mb-1.5">
@@ -454,7 +633,7 @@ export function PeriodicServicePanel({
               </div>
             )}
 
-            {/* ── Disclaimer ──────────────────────────────────────────────── */}
+            {/* ── Disclaimer ─────────────────────────────────────────────── */}
             <div className="bg-amber-500/8 border border-amber-500/25 rounded-xl px-4 py-3 flex items-start gap-2.5">
               <AlertTriangle size={14} className="text-amber-400 shrink-0 mt-0.5" />
               <p className="text-xs text-amber-300/90 leading-relaxed">
@@ -463,7 +642,7 @@ export function PeriodicServicePanel({
               </p>
             </div>
 
-            {/* ── CTA ─────────────────────────────────────────────────────── */}
+            {/* ── CTA ────────────────────────────────────────────────────── */}
             {canEdit && (
               <div className="pt-1">
                 {!confirmed ? (
@@ -473,6 +652,11 @@ export function PeriodicServicePanel({
                   >
                     <CheckCircle2 size={16} />
                     מלא טופס הצעת מחיר עם פריטים אלה
+                    {allSelected.length > 0 && (
+                      <span className="text-emerald-200 font-normal text-sm">
+                        ({groups.required.length + allSelected.length} פריטים)
+                      </span>
+                    )}
                   </button>
                 ) : (
                   <div className="text-center space-y-1">
@@ -496,52 +680,29 @@ export function PeriodicServicePanel({
   )
 }
 
-// ─── ItemRow sub-component ────────────────────────────────────────────────────
+// ─── Section-specific item row components ─────────────────────────────────────
 
-function ItemRow({
-  item,
-  laborRate,
-  expanded,
-  onToggle,
+/** Required item — always selected, green checkmark */
+function RequiredItemRow({
+  item, noteKey, expanded, onToggleNote,
 }: {
-  item:      ServiceItem
-  laborRate: number
-  expanded:  boolean
-  onToggle:  () => void
+  item: ServiceItem; noteKey: string; expanded: boolean; onToggleNote: () => void
 }) {
   const icon  = CATEGORY_ICONS[item.category]  ?? '🔧'
-  const label = CATEGORY_LABELS[item.category] ?? item.category
   const isInspection = item.category === 'INSPECTION'
 
   return (
-    <div
-      className={`rounded-xl border transition-colors ${
-        item.required
-          ? 'bg-[#1a1d27] border-[#252836]'
-          : 'bg-[#141720] border-dashed border-[#252836]'
-      }`}
-    >
+    <div className="bg-[#1a1d27] border border-[#252836] rounded-xl">
       <div className="flex items-center gap-3 px-3 py-2.5">
-        <span className="text-base shrink-0 w-6 text-center">{icon}</span>
+        {/* Check indicator */}
+        <CheckCircle2 size={14} className="text-emerald-500 shrink-0" />
+        <span className="text-base shrink-0 w-5 text-center">{icon}</span>
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-1.5">
-            <p className={`text-sm truncate ${item.required ? 'text-[#c5cde2]' : 'text-[#4a5270]'}`}>
-              {item.nameHe}
-            </p>
-            {!item.required && (
-              <span className="text-[9px] font-bold text-amber-500/70 border border-amber-500/25 px-1.5 py-0.5 rounded-md shrink-0">
-                אופציונלי
-              </span>
-            )}
-          </div>
+          <p className="text-sm text-[#c5cde2] truncate">{item.nameHe}</p>
           {isInspection && item.laborHours > 0 && (
-            <p className="text-[10px] text-[#4a5270] mt-0.5">
-              כולל {item.laborHours} שע׳ בדיקה
-            </p>
+            <p className="text-[10px] text-[#4a5270] mt-0.5">כולל {item.laborHours} שע׳ בדיקה</p>
           )}
         </div>
-
-        {/* Price + hours */}
         <div className="flex items-center gap-2 shrink-0">
           {item.laborHours > 0 && !isInspection && (
             <span className="text-[10px] text-indigo-400 font-mono bg-indigo-500/10 px-1.5 py-0.5 rounded-md">
@@ -549,27 +710,147 @@ function ItemRow({
             </span>
           )}
           {!isInspection && (
-            <span className={`text-xs font-mono font-bold ${item.required ? 'text-[#8892a4]' : 'text-[#4a5270]'}`}>
+            <span className="text-xs font-mono font-bold text-[#8892a4]">
               {item.unitPrice > 0 ? `₪${(item.unitPrice * item.quantity).toLocaleString('he-IL')}` : '—'}
             </span>
           )}
+          {item.notes && (
+            <button onClick={onToggleNote} className="text-[#2e3147] hover:text-[#4a5270] transition-colors">
+              {expanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+            </button>
+          )}
         </div>
-
-        {/* Toggle for notes */}
-        {item.notes && (
-          <button
-            onClick={onToggle}
-            className="text-[#2e3147] hover:text-[#4a5270] transition-colors shrink-0"
-          >
-            {expanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
-          </button>
-        )}
       </div>
-
-      {/* Notes drawer */}
       {item.notes && expanded && (
         <div className="px-3 pb-3 pt-0 border-t border-[#1e2230]">
           <p className="text-xs text-[#4a5270] leading-relaxed mt-2">{item.notes}</p>
+        </div>
+      )}
+    </div>
+  )
+}
+
+/** Recommended item — toggleable with + / ✓ button */
+function RecommendedItemRow({
+  item, selected, noteKey, expanded, onToggle, onToggleNote,
+}: {
+  item: ServiceItem; selected: boolean; noteKey: string
+  expanded: boolean; onToggle: () => void; onToggleNote: () => void
+}) {
+  const icon  = CATEGORY_ICONS[item.category] ?? '🔧'
+  const cost  = r2(item.unitPrice * item.quantity + item.laborHours * LABOR_RATE_ILS)
+
+  return (
+    <div className={`rounded-xl border transition-all ${
+      selected
+        ? 'bg-blue-500/8 border-blue-500/30'
+        : 'bg-[#141720] border-[#252836]'
+    }`}>
+      <div className="flex items-center gap-3 px-3 py-2.5">
+        <span className="text-base shrink-0 w-5 text-center">{icon}</span>
+        <div className="flex-1 min-w-0">
+          <p className={`text-sm truncate ${selected ? 'text-[#c5cde2]' : 'text-[#4a5270]'}`}>
+            {item.nameHe}
+          </p>
+          {cost > 0 && (
+            <p className="text-[10px] text-[#3a4260] mt-0.5">
+              {item.laborHours > 0 && `${item.laborHours} שע׳ + `}
+              ₪{(item.unitPrice * item.quantity).toLocaleString('he-IL')} חלקים
+            </p>
+          )}
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          {cost > 0 && (
+            <span className={`text-xs font-mono font-bold ${selected ? 'text-blue-300' : 'text-[#3a4260]'}`}>
+              ₪{cost.toLocaleString('he-IL')}
+            </span>
+          )}
+          {item.notes && (
+            <button onClick={onToggleNote} className="text-[#2e3147] hover:text-[#4a5270] transition-colors">
+              {expanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+            </button>
+          )}
+          <button
+            onClick={onToggle}
+            className={`flex items-center gap-1 text-[11px] font-bold px-2.5 py-1 rounded-lg border transition-all ${
+              selected
+                ? 'bg-blue-500/20 border-blue-500/40 text-blue-300 hover:bg-red-500/15 hover:border-red-500/30 hover:text-red-400'
+                : 'bg-[#1e2230] border-[#2e3147] text-[#4a5270] hover:bg-blue-500/15 hover:border-blue-500/30 hover:text-blue-300'
+            }`}
+          >
+            {selected ? <X size={10} /> : <Plus size={10} />}
+            {selected ? 'הסר' : 'הוסף'}
+          </button>
+        </div>
+      </div>
+      {item.notes && expanded && (
+        <div className="px-3 pb-3 pt-0 border-t border-[#1e2230]">
+          <p className="text-xs text-[#4a5270] leading-relaxed mt-2">{item.notes}</p>
+        </div>
+      )}
+    </div>
+  )
+}
+
+/** Safety item — red warning badge, click to add */
+function SafetyItemRow({
+  item, selected, noteKey, expanded, onToggle, onToggleNote,
+}: {
+  item: ServiceItem; selected: boolean; noteKey: string
+  expanded: boolean; onToggle: () => void; onToggleNote: () => void
+}) {
+  const icon = CATEGORY_ICONS[item.category] ?? '⚠️'
+  const cost = r2(item.unitPrice * item.quantity + item.laborHours * LABOR_RATE_ILS)
+
+  return (
+    <div className={`rounded-xl border transition-all ${
+      selected
+        ? 'bg-red-500/10 border-red-500/35'
+        : 'bg-[#1a1017] border-red-500/15'
+    }`}>
+      <div className="flex items-center gap-3 px-3 py-2.5">
+        <AlertTriangle size={14} className="text-red-400 shrink-0" />
+        <span className="text-base shrink-0 w-5 text-center">{icon}</span>
+        <div className="flex-1 min-w-0">
+          <p className={`text-sm truncate ${selected ? 'text-red-200' : 'text-red-400/80'}`}>
+            {item.nameHe}
+          </p>
+          {cost > 0 && (
+            <p className="text-[10px] text-red-500/50 mt-0.5">
+              {item.unitPrice > 0
+                ? `₪${(item.unitPrice * item.quantity).toLocaleString('he-IL')} חלקים`
+                : 'נדרשת בדיקה פיזית'}
+              {item.laborHours > 0 && ` + ${item.laborHours} שע׳`}
+            </p>
+          )}
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          {cost > 0 && (
+            <span className={`text-xs font-mono font-bold ${selected ? 'text-red-300' : 'text-red-500/50'}`}>
+              {item.unitPrice > 0 ? `₪${cost.toLocaleString('he-IL')}` : '—'}
+            </span>
+          )}
+          {item.notes && (
+            <button onClick={onToggleNote} className="text-red-500/30 hover:text-red-400/70 transition-colors">
+              {expanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+            </button>
+          )}
+          <button
+            onClick={onToggle}
+            className={`flex items-center gap-1 text-[11px] font-bold px-2.5 py-1 rounded-lg border transition-all ${
+              selected
+                ? 'bg-red-500/20 border-red-500/40 text-red-300 hover:bg-[#1a1d27] hover:border-[#2e3147] hover:text-[#4a5270]'
+                : 'bg-red-500/10 border-red-500/25 text-red-400 hover:bg-red-500/20 hover:border-red-500/40'
+            }`}
+          >
+            {selected ? <X size={10} /> : <Plus size={10} />}
+            {selected ? 'הסר' : 'הוסף'}
+          </button>
+        </div>
+      </div>
+      {item.notes && expanded && (
+        <div className="px-3 pb-3 pt-0 border-t border-red-500/10">
+          <p className="text-xs text-red-400/60 leading-relaxed mt-2">{item.notes}</p>
         </div>
       )}
     </div>

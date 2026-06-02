@@ -822,13 +822,18 @@ model MaintenanceItem {
   scheduleId  String
   schedule    MaintenanceSchedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
   // OIL | FILTER_OIL | FILTER_AIR | FILTER_CABIN | FILTER_FUEL |
-  // SPARK_PLUGS | GLOW_PLUGS | BRAKE_FLUID | GEARBOX_OIL | INSPECTION
+  // SPARK_PLUGS | GLOW_PLUGS | BRAKE_FLUID | GEARBOX_OIL | INSPECTION |
+  // BATTERY | ALIGNMENT | INJECTOR_CLEAN | BRAKE_PADS | TIRES | SUSPENSION
   category    String
   nameHe      String              // Hebrew display name
   quantity    Int                 @default(1)
   unitPrice   Decimal             @db.Decimal(10,2)  // ILS before VAT
   laborHours  Decimal             @db.Decimal(5,2)   @default(0)
-  required    Boolean             @default(true)     // false = optional / recommended
+  required    Boolean             @default(true)     // derived from priority; kept for backward compat
+  // REQUIRED    = mandated by manufacturer spec — pre-selected in UI
+  // RECOMMENDED = service advisor upsell — one-click add
+  // SAFETY      = safety-critical finding — shown with red warning badge
+  priority    String              @default("REQUIRED")
   notes       String?
   sortOrder   Int                 @default(0)
 

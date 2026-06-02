@@ -40,8 +40,25 @@ export interface ServiceItem {
   unitPrice:  number
   laborHours: number
   required:   boolean
+  /** REQUIRED | RECOMMENDED | SAFETY */
+  priority:   string
   notes?:     string
   sortOrder:  number
+}
+
+export interface GroupedItems {
+  required:    ServiceItem[]
+  recommended: ServiceItem[]
+  safety:      ServiceItem[]
+}
+
+/** Split items into three advisory tiers */
+export function groupByPriority(items: ServiceItem[]): GroupedItems {
+  return {
+    required:    items.filter(i => i.priority === 'REQUIRED'),
+    recommended: items.filter(i => i.priority === 'RECOMMENDED'),
+    safety:      items.filter(i => i.priority === 'SAFETY'),
+  }
 }
 
 export interface ScheduleResult {
@@ -89,6 +106,7 @@ function toServiceItem(row: {
   unitPrice:  { toNumber: () => number } | number
   laborHours: { toNumber: () => number } | number
   required:   boolean
+  priority:   string
   notes:      string | null
   sortOrder:  number
 }): ServiceItem {
@@ -101,6 +119,7 @@ function toServiceItem(row: {
     unitPrice:  price,
     laborHours: labour,
     required:   row.required,
+    priority:   row.priority,
     notes:      row.notes ?? undefined,
     sortOrder:  row.sortOrder,
   }
@@ -161,7 +180,7 @@ function round2(n: number): number {
 const ITEM_SELECT = {
   id: true, category: true, nameHe: true,
   quantity: true, unitPrice: true, laborHours: true,
-  required: true, notes: true, sortOrder: true,
+  required: true, priority: true, notes: true, sortOrder: true,
 }
 
 /** Find the best matching schedule row for a vehicle spec */
@@ -299,27 +318,45 @@ export async function resolveSchedule(
 // ─── Category labels ─────────────────────────────────────────────────────────
 
 export const CATEGORY_LABELS: Record<string, string> = {
-  OIL:           'שמן מנוע',
-  FILTER_OIL:    'פילטר שמן',
-  FILTER_AIR:    'פילטר אוויר',
-  FILTER_CABIN:  'פילטר קבין',
-  FILTER_FUEL:   'פילטר דלק',
-  SPARK_PLUGS:   'מצתים',
-  GLOW_PLUGS:    'נרות לבה',
-  BRAKE_FLUID:   'נוזל בלמים',
-  GEARBOX_OIL:   'שמן גיר',
-  INSPECTION:    'בדיקה',
+  // ── Required tier ─────────────────────────────────────────────────────────
+  OIL:            'שמן מנוע',
+  FILTER_OIL:     'פילטר שמן',
+  FILTER_AIR:     'פילטר אוויר',
+  FILTER_CABIN:   'פילטר קבין',
+  FILTER_FUEL:    'פילטר דלק',
+  SPARK_PLUGS:    'מצתים',
+  GLOW_PLUGS:     'נרות לבה',
+  BRAKE_FLUID:    'נוזל בלמים',
+  GEARBOX_OIL:    'שמן גיר',
+  INSPECTION:     'בדיקה',
+  // ── Recommended tier ──────────────────────────────────────────────────────
+  BATTERY:        'מצבר',
+  ALIGNMENT:      'יישור גלגלים',
+  INJECTOR_CLEAN: 'ניקוי מזרקים',
+  // ── Safety tier ───────────────────────────────────────────────────────────
+  BRAKE_PADS:     'רפידות בלם',
+  TIRES:          'צמיגים',
+  SUSPENSION:     'מתלים',
 }
 
 export const CATEGORY_ICONS: Record<string, string> = {
-  OIL:           '🛢️',
-  FILTER_OIL:    '🔩',
-  FILTER_AIR:    '💨',
-  FILTER_CABIN:  '🌿',
-  FILTER_FUEL:   '⛽',
-  SPARK_PLUGS:   '⚡',
-  GLOW_PLUGS:    '🔥',
-  BRAKE_FLUID:   '🔴',
-  GEARBOX_OIL:   '⚙️',
-  INSPECTION:    '🔍',
+  // ── Required tier ─────────────────────────────────────────────────────────
+  OIL:            '🛢️',
+  FILTER_OIL:     '🔩',
+  FILTER_AIR:     '💨',
+  FILTER_CABIN:   '🌿',
+  FILTER_FUEL:    '⛽',
+  SPARK_PLUGS:    '⚡',
+  GLOW_PLUGS:     '🔥',
+  BRAKE_FLUID:    '🔴',
+  GEARBOX_OIL:    '⚙️',
+  INSPECTION:     '🔍',
+  // ── Recommended tier ──────────────────────────────────────────────────────
+  BATTERY:        '🔋',
+  ALIGNMENT:      '🎯',
+  INJECTOR_CLEAN: '💉',
+  // ── Safety tier ───────────────────────────────────────────────────────────
+  BRAKE_PADS:     '🛑',
+  TIRES:          '🏎️',
+  SUSPENSION:     '🔩',
 }
