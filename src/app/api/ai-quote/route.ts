@@ -40,6 +40,7 @@ export async function POST(req: NextRequest) {
     // ── Parse body ────────────────────────────────────────────────────────────
     const body = await req.json() as {
       complaintText:   string
+      serviceType?:    string   // passed by client so we can enforce the guard server-side
       workOrderId?:    string
       vehiclePlate?:   string
       vehicleMake?:    string
@@ -47,6 +48,20 @@ export async function POST(req: NextRequest) {
       vehicleYear?:    number
       vehicleMileage?: number
       photoUrls?:      string[]
+    }
+
+    // ── Periodic service guard ────────────────────────────────────────────────
+    // Periodic service quotes must be generated from structured MaintenanceSchedule
+    // data only.  AI analysis is explicitly prohibited for this service type —
+    // AI must never guess at maintenance intervals or required parts.
+    if (body.serviceType === 'PERIODIC_SERVICE') {
+      return NextResponse.json(
+        {
+          error:   'PERIODIC_SERVICE_NOT_ALLOWED',
+          message: 'טיפול תקופתי מחייב שימוש בלוח טיפולים מובנה — /api/periodic-quote',
+        },
+        { status: 400 },
+      )
     }
 
     if (!body.complaintText?.trim()) {

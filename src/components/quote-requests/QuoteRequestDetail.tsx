@@ -120,8 +120,13 @@ export function QuoteRequestDetail({ data }: { data: QuoteDetailData }) {
   // ── AI state ────────────────────────────────────────────────────────────────
   const [ai,           setAi]           = useState<AiState>({ status: 'idle' })
   const [aiExpanded,   setAiExpanded]   = useState(true)
-  const [aiFilled,     setAiFilled]     = useState(false)
   const [showPartsPanel, setShowPartsPanel] = useState(false)
+
+  // ── Form fill tracking ──────────────────────────────────────────────────────
+  // 'ai'       → form was populated from AI analysis / supplier panel
+  // 'schedule' → form was populated from structured maintenance schedule (periodic only)
+  // null       → form has not been auto-populated yet
+  const [filledSource, setFilledSource] = useState<null | 'ai' | 'schedule'>(null)
 
   // ── Totals ──────────────────────────────────────────────────────────────────
   const VAT_RATE   = 0.17
@@ -149,6 +154,10 @@ export function QuoteRequestDetail({ data }: { data: QuoteDetailData }) {
 
   // ── AI analysis ─────────────────────────────────────────────────────────────
   async function runAiAnalysis() {
+    // Hard guard: AI analysis is never used for periodic service.
+    // The structured maintenance schedule engine handles that path exclusively.
+    if (data.serviceType === 'PERIODIC_SERVICE') return
+
     setAi({ status: 'loading' })
     const serviceLabel =
       SERVICE_TYPE_LABELS[data.serviceType as keyof typeof SERVICE_TYPE_LABELS] ?? data.serviceType
@@ -160,6 +169,7 @@ export function QuoteRequestDetail({ data }: { data: QuoteDetailData }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           complaintText,
+          serviceType:  data.serviceType,       // sent so the server can enforce the same guard
           vehicleMake:  data.vehicle.make,
           vehicleModel: data.vehicle.model,
           vehicleYear:  data.vehicle.year,
@@ -201,16 +211,17 @@ export function QuoteRequestDetail({ data }: { data: QuoteDetailData }) {
     const notesParts = [`פעולות עבודה:\n${opLines}`]
     if (result.aiNotes) notesParts.push('', `הערות AI:\n${result.aiNotes}`)
     setNotes(notesParts.join('\n'))
-    setAiFilled(true)
+    setFilledSource('ai')
   }
 
   // ── Fill form from periodic service schedule ────────────────────────────────
+  // Source is the MaintenanceSchedule DB — no AI involved.
   function fillFromPeriodic(items: QuoteItemEdit[], scheduleNotes: string, schedLaborHours: number) {
     setItems(items)
     setLaborHours(schedLaborHours)
     setLaborRate(295)
     setNotes(scheduleNotes)
-    setAiFilled(true)
+    setFilledSource('schedule')   // ← explicitly NOT 'ai'
   }
 
   // ── Fill form from selected supplier parts (called by PartsRecommendationPanel) ──
@@ -226,7 +237,7 @@ export function QuoteRequestDetail({ data }: { data: QuoteDetailData }) {
     } else {
       setNotes(partsNotes)
     }
-    setAiFilled(true)
+    setFilledSource('ai')
     setShowPartsPanel(false)
   }
 
@@ -537,9 +548,9 @@ export function QuoteRequestDetail({ data }: { data: QuoteDetailData }) {
                     className="w-full flex items-center justify-center gap-2.5 bg-[#6366f1] hover:bg-[#5558e8] text-white font-black text-base py-4 rounded-xl transition-colors active:scale-[0.98] shadow-lg shadow-[#6366f1]/25"
                   >
                     <Package size={16} />
-                    {aiFilled ? '↺ ערוך בחירת חלקים וספקים' : 'בחר ספקים וצור הצעת מחיר'}
+                    {filledSource === 'ai' ? '↺ ערוך בחירת חלקים וספקים' : 'בחר ספקים וצור הצעת מחיר'}
                   </button>
-                  {aiFilled && (
+                  {filledSource === 'ai' && (
                     <p className="text-center text-xs text-emerald-500">
                       ✓ חלקים ועבודה מולאו — ערוך לפי הצורך לפני שליחה ללקוח
                     </p>
@@ -594,9 +605,14 @@ export function QuoteRequestDetail({ data }: { data: QuoteDetailData }) {
       <div className="bg-white rounded-2xl border border-slate-200 p-5 space-y-4">
         <div className="flex items-center justify-between">
           <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">שכר עבודה</p>
-          {aiFilled && (
+          {filledSource === 'ai' && (
             <span className="text-[10px] text-indigo-500 bg-indigo-50 px-2 py-0.5 rounded-full border border-indigo-100">
               ✨ מולא מ-AI
+            </span>
+          )}
+          {filledSource === 'schedule' && (
+            <span className="text-[10px] text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+              📋 לוח טיפולים
             </span>
           )}
         </div>
@@ -630,8 +646,8 @@ export function QuoteRequestDetail({ data }: { data: QuoteDetailData }) {
           </div>
         </div>
 
-        {/* Labor operations breakdown when AI filled */}
-        {aiFilled && ai.status === 'done' && ai.result.laborOperations.length > 0 && (
+        {/* Labor operations breakdown — shown only for AI-filled (not schedule-filled) */}
+        {filledSource === 'ai' && ai.status === 'done' && ai.result.laborOperations.length > 0 && (
           <div className="pt-2 border-t border-slate-50 space-y-1">
             <p className="text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1.5">
               פירוט פעולות
@@ -651,9 +667,14 @@ export function QuoteRequestDetail({ data }: { data: QuoteDetailData }) {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">חלקים ושירותים</p>
-            {aiFilled && (
+            {filledSource === 'ai' && (
               <span className="text-[10px] text-indigo-500 bg-indigo-50 px-2 py-0.5 rounded-full border border-indigo-100">
                 ✨ מולא מ-AI
+              </span>
+            )}
+            {filledSource === 'schedule' && (
+              <span className="text-[10px] text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                📋 לוח טיפולים
               </span>
             )}
           </div>
