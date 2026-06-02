@@ -22,7 +22,12 @@ export default async function QuoteRequestDetailPage({ params }: { params: { id:
     include: {
       workOrder: {
         include: {
-          vehicle:  { select: { make: true, model: true, plate: true, year: true, color: true } },
+          vehicle: {
+            select: {
+              make: true, model: true, plate: true, year: true, color: true,
+              engine: true, fuelType: true, transmission: true, mileage: true,
+            },
+          },
           customer: { select: { name: true, phone: true } },
           quote: {
             include: { items: { orderBy: { id: 'asc' } } },
@@ -44,8 +49,18 @@ export default async function QuoteRequestDetailPage({ params }: { params: { id:
     urgency:     req.urgency,
     description: req.description,
     createdAt:   req.createdAt,
-    customer:    wo.customer,
-    vehicle:     wo.vehicle,
+    customer: wo.customer,
+    vehicle: {
+      make:         wo.vehicle.make,
+      model:        wo.vehicle.model,
+      plate:        wo.vehicle.plate,
+      year:         wo.vehicle.year,
+      color:        wo.vehicle.color  ?? null,
+      engine:       wo.vehicle.engine ?? null,
+      fuelType:     wo.vehicle.fuelType    ? String(wo.vehicle.fuelType)    : null,
+      transmission: wo.vehicle.transmission ? String(wo.vehicle.transmission) : null,
+      mileage:      wo.vehicle.mileage ?? null,
+    },
     workOrder:   { workOrderNumber: wo.workOrderNumber, id: wo.id },
     quote: quote ? {
       id:          quote.id,

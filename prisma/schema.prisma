@@ -792,6 +792,49 @@ model MigrationLog {
   @@index([entity, action])
 }
 
+// ─── Maintenance Schedules ────────────────────────────────────────────────────
+//
+// Structured service schedule rules per vehicle variant.
+// Matched by make / model / year range / fuelType / transmission.
+// Used by the periodic-service quote engine as the authoritative source.
+// AI may explain or fill gaps but never overrides these rules.
+
+model MaintenanceSchedule {
+  id             String    @id @default(cuid())
+  make           String    // "Toyota" — case-insensitive match at query time
+  model          String    // "Corolla"
+  yearFrom       Int       // first model year this schedule applies to (inclusive)
+  yearTo         Int       // last model year (inclusive)
+  fuelType       String?   // FuelType enum value or null = matches any fuel
+  transmission   String?   // Transmission enum value or null = matches any
+  intervalKm     Int       // service interval in km  (e.g. 60000)
+  intervalMonths Int?      // optional time-based interval
+  notes          String?   // shown on the schedule card (Hebrew)
+  items          MaintenanceItem[]
+  createdAt      DateTime  @default(now())
+
+  @@index([make, model])
+  @@index([make, model, fuelType])
+}
+
+model MaintenanceItem {
+  id          String              @id @default(cuid())
+  scheduleId  String
+  schedule    MaintenanceSchedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  // OIL | FILTER_OIL | FILTER_AIR | FILTER_CABIN | FILTER_FUEL |
+  // SPARK_PLUGS | GLOW_PLUGS | BRAKE_FLUID | GEARBOX_OIL | INSPECTION
+  category    String
+  nameHe      String              // Hebrew display name
+  quantity    Int                 @default(1)
+  unitPrice   Decimal             @db.Decimal(10,2)  // ILS before VAT
+  laborHours  Decimal             @db.Decimal(5,2)   @default(0)
+  required    Boolean             @default(true)     // false = optional / recommended
+  notes       String?
+  sortOrder   Int                 @default(0)
+
+  @@index([scheduleId, sortOrder])
+}
+
 // ─── AI Quote Analysis ────────────────────────────────────────────────────────
 //
 // Stores every AI-powered complaint analysis: inputs, raw Claude response,

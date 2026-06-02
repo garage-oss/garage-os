@@ -15,7 +15,8 @@ import {
   AlertTriangle, Zap, Clock,
   Package, Activity, CheckCircle2,
 } from 'lucide-react'
-import { PartsRecommendationPanel } from './PartsRecommendationPanel'
+import { PartsRecommendationPanel }  from './PartsRecommendationPanel'
+import { PeriodicServicePanel }      from './PeriodicServicePanel'
 
 // ─── AI types ─────────────────────────────────────────────────────────────────
 
@@ -61,7 +62,17 @@ export interface QuoteDetailData {
   description: string | null
   createdAt:   Date
   customer:  { name: string; phone: string }
-  vehicle:   { make: string; model: string; plate: string; year: number }
+  vehicle: {
+    make:          string
+    model:         string
+    plate:         string
+    year:          number
+    color?:        string | null
+    engine?:       string | null
+    fuelType?:     string | null
+    transmission?: string | null
+    mileage?:      number | null
+  }
   workOrder: { workOrderNumber: string; id: string }
   quote: {
     id:          string
@@ -193,6 +204,15 @@ export function QuoteRequestDetail({ data }: { data: QuoteDetailData }) {
     setAiFilled(true)
   }
 
+  // ── Fill form from periodic service schedule ────────────────────────────────
+  function fillFromPeriodic(items: QuoteItemEdit[], scheduleNotes: string, schedLaborHours: number) {
+    setItems(items)
+    setLaborHours(schedLaborHours)
+    setLaborRate(295)
+    setNotes(scheduleNotes)
+    setAiFilled(true)
+  }
+
   // ── Fill form from selected supplier parts (called by PartsRecommendationPanel) ──
   function fillFromParts(items: QuoteItemEdit[], partsNotes: string) {
     setItems(items)
@@ -246,8 +266,31 @@ export function QuoteRequestDetail({ data }: { data: QuoteDetailData }) {
     <div className="space-y-5">
 
       {/* ════════════════════════════════════════════════════════════
-          AI ANALYSIS PANEL
+          PERIODIC SERVICE — structured schedule panel
+          (replaces AI panel for PERIODIC_SERVICE requests)
       ════════════════════════════════════════════════════════════ */}
+      {data.serviceType === 'PERIODIC_SERVICE' && (
+        <PeriodicServicePanel
+          vehicle={{
+            plate:        data.vehicle.plate,
+            make:         data.vehicle.make,
+            model:        data.vehicle.model,
+            year:         data.vehicle.year,
+            engine:       data.vehicle.engine       ?? null,
+            fuelType:     data.vehicle.fuelType     ?? null,
+            transmission: data.vehicle.transmission ?? null,
+            mileage:      data.vehicle.mileage      ?? null,
+          }}
+          workOrderId={data.workOrder.id}
+          canEdit={canEdit}
+          onConfirm={fillFromPeriodic}
+        />
+      )}
+
+      {/* ════════════════════════════════════════════════════════════
+          AI ANALYSIS PANEL (non-periodic service types)
+      ════════════════════════════════════════════════════════════ */}
+      {data.serviceType !== 'PERIODIC_SERVICE' && (
       <div className="bg-[#0f1117] border border-[#252836] rounded-2xl overflow-hidden">
 
         {/* ── Panel header ─────────────────────────────────────── */}
@@ -509,6 +552,7 @@ export function QuoteRequestDetail({ data }: { data: QuoteDetailData }) {
         })()}
 
       </div>
+      )}
 
       {/* ════════════════════════════════════════════════════════════
           PARTS RECOMMENDATION PANEL (shown after AI analysis)
@@ -719,7 +763,10 @@ export function QuoteRequestDetail({ data }: { data: QuoteDetailData }) {
         <div className="bg-amber-50 border border-amber-200 rounded-xl px-3 py-2.5 flex items-start gap-2 mt-2">
           <span className="text-sm shrink-0">⚠️</span>
           <p className="text-xs text-amber-700">
-            <strong>הצעה אוטומטית — הערכה בלבד.</strong> יש לאשר ולעדכן לפני שליחה ללקוח.
+            {data.serviceType === 'PERIODIC_SERVICE'
+              ? <><strong>הצעה אוטומטית לפי נתוני רכב וק״מ</strong> — כפוף לאימות לפי קוד מנוע והוראות יצרן.</>
+              : <><strong>הצעה אוטומטית — הערכה בלבד.</strong> יש לאשר ולעדכן לפני שליחה ללקוח.</>
+            }
           </p>
         </div>
       </div>

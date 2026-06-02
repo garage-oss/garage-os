@@ -318,6 +318,244 @@ async function main() {
     ],
   })
 
+  // ── Maintenance Schedules ─────────────────────────────────────────────────
+  // Three seeded vehicles × 60,000 km major service
+  // Rules: make/model/year/fuelType → items with price + labor hours
+
+  // Helper to create a schedule + items atomically
+  async function upsertSchedule(
+    id: string,
+    spec: {
+      make: string; model: string
+      yearFrom: number; yearTo: number
+      fuelType?: string; transmission?: string
+      intervalKm: number; intervalMonths?: number; notes?: string
+    },
+    items: Array<{
+      id: string; category: string; nameHe: string
+      quantity: number; unitPrice: number; laborHours: number
+      required: boolean; notes?: string; sortOrder: number
+    }>,
+  ) {
+    await prisma.maintenanceSchedule.upsert({
+      where:  { id },
+      update: {},
+      create: { id, ...spec },
+    })
+    for (const item of items) {
+      await prisma.maintenanceItem.upsert({
+        where:  { id: item.id },
+        update: {},
+        create: { ...item, scheduleId: id },
+      })
+    }
+  }
+
+  // ── 1. Skoda Octavia 2019–2023 Gasoline 60,000 km ──────────────────────────
+  await upsertSchedule('sched-skoda-octavia-gas-60k', {
+    make: 'Skoda', model: 'Octavia',
+    yearFrom: 2019, yearTo: 2023,
+    fuelType: 'GASOLINE',
+    intervalKm: 60000, intervalMonths: 24,
+    notes: 'TSI / MHEV — מצתי אירידיום נדרשים ב-60 אלף ק״מ. נוזל בלמים DOT 4 יש לבדוק מדי 2 שנים.',
+  }, [
+    { id: 'mi-skoda-gas-oil',      category: 'OIL',          nameHe: 'שמן מנוע 5W-30 (5 ליטר)',            quantity: 1, unitPrice: 190, laborHours: 0.30, required: true,  sortOrder: 1 },
+    { id: 'mi-skoda-gas-foil',     category: 'FILTER_OIL',   nameHe: 'פילטר שמן',                         quantity: 1, unitPrice:  45, laborHours: 0.10, required: true,  sortOrder: 2 },
+    { id: 'mi-skoda-gas-fair',     category: 'FILTER_AIR',   nameHe: 'פילטר אוויר',                        quantity: 1, unitPrice:  85, laborHours: 0.15, required: true,  sortOrder: 3 },
+    { id: 'mi-skoda-gas-fcab',     category: 'FILTER_CABIN', nameHe: 'פילטר קבין (אנטי-אבקה)',             quantity: 1, unitPrice:  95, laborHours: 0.15, required: true,  sortOrder: 4 },
+    { id: 'mi-skoda-gas-plugs',    category: 'SPARK_PLUGS',  nameHe: 'מצתי אירידיום NGK — סט 4',          quantity: 1, unitPrice: 280, laborHours: 0.50, required: true,  sortOrder: 5, notes: 'NGK Iridium IX — מומלץ לטורבו TSI' },
+    { id: 'mi-skoda-gas-brake',    category: 'BRAKE_FLUID',  nameHe: 'נוזל בלמים DOT 4 (0.5 ליטר)',       quantity: 1, unitPrice:  55, laborHours: 0.20, required: true,  sortOrder: 6 },
+    { id: 'mi-skoda-gas-insp',     category: 'INSPECTION',   nameHe: 'בדיקת מתלים, בלמים, גומיות ונוזלים', quantity: 1, unitPrice:   0, laborHours: 0.40, required: true,  sortOrder: 7 },
+  ])
+
+  // ── 2. Skoda Octavia 2019–2023 Diesel 60,000 km ────────────────────────────
+  await upsertSchedule('sched-skoda-octavia-diesel-60k', {
+    make: 'Skoda', model: 'Octavia',
+    yearFrom: 2019, yearTo: 2023,
+    fuelType: 'DIESEL',
+    intervalKm: 60000, intervalMonths: 24,
+    notes: 'TDI — פילטר דלק + נרות לבה נדרשים ב-60 אלף ק״מ.',
+  }, [
+    { id: 'mi-skoda-die-oil',      category: 'OIL',          nameHe: 'שמן מנוע 5W-40 דיזל (6 ליטר)',       quantity: 1, unitPrice: 250, laborHours: 0.30, required: true,  sortOrder: 1 },
+    { id: 'mi-skoda-die-foil',     category: 'FILTER_OIL',   nameHe: 'פילטר שמן',                         quantity: 1, unitPrice:  55, laborHours: 0.10, required: true,  sortOrder: 2 },
+    { id: 'mi-skoda-die-fair',     category: 'FILTER_AIR',   nameHe: 'פילטר אוויר',                        quantity: 1, unitPrice:  85, laborHours: 0.15, required: true,  sortOrder: 3 },
+    { id: 'mi-skoda-die-fcab',     category: 'FILTER_CABIN', nameHe: 'פילטר קבין (אנטי-אבקה)',             quantity: 1, unitPrice:  95, laborHours: 0.15, required: true,  sortOrder: 4 },
+    { id: 'mi-skoda-die-ffuel',    category: 'FILTER_FUEL',  nameHe: 'פילטר דלק (דיזל)',                  quantity: 1, unitPrice: 120, laborHours: 0.25, required: true,  sortOrder: 5 },
+    { id: 'mi-skoda-die-glow',     category: 'GLOW_PLUGS',   nameHe: 'נרות לבה — סט 4',                   quantity: 1, unitPrice: 320, laborHours: 0.50, required: true,  sortOrder: 6 },
+    { id: 'mi-skoda-die-brake',    category: 'BRAKE_FLUID',  nameHe: 'נוזל בלמים DOT 4 (0.5 ליטר)',       quantity: 1, unitPrice:  55, laborHours: 0.20, required: true,  sortOrder: 7 },
+    { id: 'mi-skoda-die-insp',     category: 'INSPECTION',   nameHe: 'בדיקת מתלים, בלמים, גומיות ונוזלים', quantity: 1, unitPrice:   0, laborHours: 0.40, required: true,  sortOrder: 8 },
+  ])
+
+  // ── 3. Toyota Corolla 2019–2023 Hybrid 60,000 km ───────────────────────────
+  await upsertSchedule('sched-corolla-hybrid-60k', {
+    make: 'Toyota', model: 'Corolla',
+    yearFrom: 2019, yearTo: 2023,
+    fuelType: 'HYBRID',
+    intervalKm: 60000, intervalMonths: 24,
+    notes: 'היברידי — שמן 0W-20 בלבד. מצתי אירידיום מוחלפים ב-120,000 ק״מ בלבד. נוזל בלמים DOT 3.',
+  }, [
+    { id: 'mi-corolla-hyb-oil',    category: 'OIL',          nameHe: 'שמן מנוע 0W-20 היברידי (4.5 ליטר)', quantity: 1, unitPrice: 260, laborHours: 0.30, required: true,  sortOrder: 1, notes: 'Toyota Genuine 0W-20 בלבד' },
+    { id: 'mi-corolla-hyb-foil',   category: 'FILTER_OIL',   nameHe: 'פילטר שמן',                         quantity: 1, unitPrice:  55, laborHours: 0.10, required: true,  sortOrder: 2 },
+    { id: 'mi-corolla-hyb-fair',   category: 'FILTER_AIR',   nameHe: 'פילטר אוויר',                        quantity: 1, unitPrice:  85, laborHours: 0.15, required: true,  sortOrder: 3 },
+    { id: 'mi-corolla-hyb-fcab',   category: 'FILTER_CABIN', nameHe: 'פילטר קבין HEPA (Toyota)',           quantity: 1, unitPrice: 120, laborHours: 0.15, required: true,  sortOrder: 4 },
+    { id: 'mi-corolla-hyb-brake',  category: 'BRAKE_FLUID',  nameHe: 'נוזל בלמים DOT 3 (0.5 ליטר)',       quantity: 1, unitPrice:  55, laborHours: 0.25, required: true,  sortOrder: 5, notes: 'מערכת בלמים היברידית — נדרשת בדיקת לחץ' },
+    { id: 'mi-corolla-hyb-cvt',    category: 'GEARBOX_OIL',  nameHe: 'שמן E-CVT (Toyota ATF WS)',         quantity: 1, unitPrice: 220, laborHours: 0.30, required: false, sortOrder: 6, notes: 'מומלץ להחלפה ב-100,000 ק״מ — אופציונלי' },
+    { id: 'mi-corolla-hyb-insp',   category: 'INSPECTION',   nameHe: 'בדיקת מערכות היברידיות, מתלים ובלמים', quantity: 1, unitPrice: 0, laborHours: 0.40, required: true, sortOrder: 7 },
+  ])
+
+  // ── 4. Kia Sportage 2021–2024 Gasoline 60,000 km ──────────────────────────
+  await upsertSchedule('sched-sportage-gas-60k', {
+    make: 'Kia', model: 'Sportage',
+    yearFrom: 2021, yearTo: 2024,
+    fuelType: 'GASOLINE',
+    intervalKm: 60000, intervalMonths: 24,
+    notes: 'T-GDI 1.6 — מצתים נדרשים ב-60 אלף ק״מ. שמן גיר DCT אופציונלי (מומלץ).',
+  }, [
+    { id: 'mi-sportage-oil',       category: 'OIL',          nameHe: 'שמן מנוע 5W-30 (5.5 ליטר)',          quantity: 1, unitPrice: 210, laborHours: 0.30, required: true,  sortOrder: 1 },
+    { id: 'mi-sportage-foil',      category: 'FILTER_OIL',   nameHe: 'פילטר שמן',                         quantity: 1, unitPrice:  50, laborHours: 0.10, required: true,  sortOrder: 2 },
+    { id: 'mi-sportage-fair',      category: 'FILTER_AIR',   nameHe: 'פילטר אוויר',                        quantity: 1, unitPrice:  85, laborHours: 0.15, required: true,  sortOrder: 3 },
+    { id: 'mi-sportage-fcab',      category: 'FILTER_CABIN', nameHe: 'פילטר קבין',                         quantity: 1, unitPrice:  90, laborHours: 0.15, required: true,  sortOrder: 4 },
+    { id: 'mi-sportage-plugs',     category: 'SPARK_PLUGS',  nameHe: 'מצתים (סט 4)',                       quantity: 1, unitPrice: 260, laborHours: 0.50, required: true,  sortOrder: 5 },
+    { id: 'mi-sportage-brake',     category: 'BRAKE_FLUID',  nameHe: 'נוזל בלמים DOT 3',                  quantity: 1, unitPrice:  55, laborHours: 0.20, required: true,  sortOrder: 6 },
+    { id: 'mi-sportage-dct',       category: 'GEARBOX_OIL',  nameHe: 'שמן גיר DCT (אופציונלי)',            quantity: 1, unitPrice: 180, laborHours: 0.30, required: false, sortOrder: 7, notes: 'DCT — מומלץ להחלפה ב-60 אלף ק״מ' },
+    { id: 'mi-sportage-insp',      category: 'INSPECTION',   nameHe: 'בדיקת מתלים, בלמים ורצועת היגוי',   quantity: 1, unitPrice:   0, laborHours: 0.40, required: true,  sortOrder: 8 },
+  ])
+
+  // ── 5. Generic Gasoline 60,000 km fallback ─────────────────────────────────
+  await upsertSchedule('sched-generic-gas-60k', {
+    make: '__generic__', model: '__generic__',
+    yearFrom: 1990, yearTo: 2030,
+    fuelType: 'GASOLINE',
+    intervalKm: 60000,
+    notes: 'לוח זמנים כללי לבנזין — לא נמצאה התאמה ספציפית לרכב זה.',
+  }, [
+    { id: 'mi-gen-gas-oil',        category: 'OIL',          nameHe: 'שמן מנוע 5W-30 (5 ליטר)',            quantity: 1, unitPrice: 180, laborHours: 0.30, required: true,  sortOrder: 1 },
+    { id: 'mi-gen-gas-foil',       category: 'FILTER_OIL',   nameHe: 'פילטר שמן',                         quantity: 1, unitPrice:  40, laborHours: 0.10, required: true,  sortOrder: 2 },
+    { id: 'mi-gen-gas-fair',       category: 'FILTER_AIR',   nameHe: 'פילטר אוויר',                        quantity: 1, unitPrice:  75, laborHours: 0.15, required: true,  sortOrder: 3 },
+    { id: 'mi-gen-gas-fcab',       category: 'FILTER_CABIN', nameHe: 'פילטר קבין',                         quantity: 1, unitPrice:  80, laborHours: 0.15, required: true,  sortOrder: 4 },
+    { id: 'mi-gen-gas-plugs',      category: 'SPARK_PLUGS',  nameHe: 'מצתים (סט 4)',                       quantity: 1, unitPrice: 200, laborHours: 0.50, required: true,  sortOrder: 5 },
+    { id: 'mi-gen-gas-brake',      category: 'BRAKE_FLUID',  nameHe: 'נוזל בלמים',                        quantity: 1, unitPrice:  50, laborHours: 0.20, required: true,  sortOrder: 6 },
+    { id: 'mi-gen-gas-insp',       category: 'INSPECTION',   nameHe: 'בדיקת מתלים, בלמים ורמות נוזלים',   quantity: 1, unitPrice:   0, laborHours: 0.40, required: true,  sortOrder: 7 },
+  ])
+
+  // ── 6. Generic Diesel 60,000 km fallback ───────────────────────────────────
+  await upsertSchedule('sched-generic-diesel-60k', {
+    make: '__generic__', model: '__generic__',
+    yearFrom: 1990, yearTo: 2030,
+    fuelType: 'DIESEL',
+    intervalKm: 60000,
+    notes: 'לוח זמנים כללי לדיזל — לא נמצאה התאמה ספציפית לרכב זה.',
+  }, [
+    { id: 'mi-gen-die-oil',        category: 'OIL',          nameHe: 'שמן מנוע 5W-40 דיזל (6 ליטר)',       quantity: 1, unitPrice: 240, laborHours: 0.30, required: true,  sortOrder: 1 },
+    { id: 'mi-gen-die-foil',       category: 'FILTER_OIL',   nameHe: 'פילטר שמן',                         quantity: 1, unitPrice:  50, laborHours: 0.10, required: true,  sortOrder: 2 },
+    { id: 'mi-gen-die-fair',       category: 'FILTER_AIR',   nameHe: 'פילטר אוויר',                        quantity: 1, unitPrice:  75, laborHours: 0.15, required: true,  sortOrder: 3 },
+    { id: 'mi-gen-die-fcab',       category: 'FILTER_CABIN', nameHe: 'פילטר קבין',                         quantity: 1, unitPrice:  80, laborHours: 0.15, required: true,  sortOrder: 4 },
+    { id: 'mi-gen-die-ffuel',      category: 'FILTER_FUEL',  nameHe: 'פילטר דלק (דיזל)',                  quantity: 1, unitPrice: 110, laborHours: 0.25, required: true,  sortOrder: 5 },
+    { id: 'mi-gen-die-glow',       category: 'GLOW_PLUGS',   nameHe: 'נרות לבה — סט 4',                   quantity: 1, unitPrice: 280, laborHours: 0.50, required: true,  sortOrder: 6 },
+    { id: 'mi-gen-die-brake',      category: 'BRAKE_FLUID',  nameHe: 'נוזל בלמים',                        quantity: 1, unitPrice:  50, laborHours: 0.20, required: true,  sortOrder: 7 },
+    { id: 'mi-gen-die-insp',       category: 'INSPECTION',   nameHe: 'בדיקת מתלים, בלמים ורמות נוזלים',   quantity: 1, unitPrice:   0, laborHours: 0.40, required: true,  sortOrder: 8 },
+  ])
+
+  // ── 7. Generic Hybrid 60,000 km fallback ───────────────────────────────────
+  await upsertSchedule('sched-generic-hybrid-60k', {
+    make: '__generic__', model: '__generic__',
+    yearFrom: 1990, yearTo: 2030,
+    fuelType: 'HYBRID',
+    intervalKm: 60000,
+    notes: 'לוח זמנים כללי להיברידי — לא נמצאה התאמה ספציפית לרכב זה.',
+  }, [
+    { id: 'mi-gen-hyb-oil',        category: 'OIL',          nameHe: 'שמן מנוע 0W-20 היברידי (4 ליטר)',   quantity: 1, unitPrice: 240, laborHours: 0.30, required: true,  sortOrder: 1 },
+    { id: 'mi-gen-hyb-foil',       category: 'FILTER_OIL',   nameHe: 'פילטר שמן',                         quantity: 1, unitPrice:  55, laborHours: 0.10, required: true,  sortOrder: 2 },
+    { id: 'mi-gen-hyb-fair',       category: 'FILTER_AIR',   nameHe: 'פילטר אוויר',                        quantity: 1, unitPrice:  75, laborHours: 0.15, required: true,  sortOrder: 3 },
+    { id: 'mi-gen-hyb-fcab',       category: 'FILTER_CABIN', nameHe: 'פילטר קבין',                         quantity: 1, unitPrice: 110, laborHours: 0.15, required: true,  sortOrder: 4 },
+    { id: 'mi-gen-hyb-brake',      category: 'BRAKE_FLUID',  nameHe: 'נוזל בלמים DOT 3',                  quantity: 1, unitPrice:  50, laborHours: 0.25, required: true,  sortOrder: 5 },
+    { id: 'mi-gen-hyb-insp',       category: 'INSPECTION',   nameHe: 'בדיקת מערכות היברידיות ומתלים',     quantity: 1, unitPrice:   0, laborHours: 0.40, required: true,  sortOrder: 6 },
+  ])
+
+  // ── Quote Requests (PERIODIC_SERVICE demo records) ───────────────────────
+  // Requires dedicated work orders so the workOrderId unique constraint is met.
+
+  // WO for Skoda Octavia 2018 (veh-9) — gasoline, 88,000 km → generic fallback demo
+  await prisma.workOrder.upsert({
+    where: { id: 'wo-qr-1' },
+    update: {},
+    create: {
+      id: 'wo-qr-1', organizationId: orgId,
+      workOrderNumber: 'WO-2026-0101',
+      status: 'PENDING',
+      complaint: 'טיפול תקופתי — 90,000 ק״מ',
+      laborHours: 0, laborRate: 295, partsTotal: 0, totalPrice: 0,
+      mileage: 90000,
+      customerId: david.id, vehicleId: 'veh-9',
+    },
+  })
+  await prisma.quoteRequest.upsert({
+    where:  { id: 'qr-1' },
+    update: {},
+    create: {
+      id: 'qr-1', organizationId: orgId,
+      workOrderId: 'wo-qr-1',
+      serviceType: 'PERIODIC_SERVICE',
+      description: 'טיפול תקופתי — 90,000 ק״מ. שמן, פילטרים ומצתים.',
+      urgency: 'NORMAL',
+      status: 'PENDING',
+    },
+  })
+
+  // WO for Kia Sportage 2022 (veh-5) — GASOLINE, specific schedule match
+  await prisma.workOrder.upsert({
+    where: { id: 'wo-qr-2' },
+    update: {},
+    create: {
+      id: 'wo-qr-2', organizationId: orgId,
+      workOrderNumber: 'WO-2026-0102',
+      status: 'PENDING',
+      complaint: 'טיפול תקופתי — 60,000 ק״מ',
+      laborHours: 0, laborRate: 295, partsTotal: 0, totalPrice: 0,
+      mileage: 60000,
+      customerId: sara.id, vehicleId: sportage.id,
+    },
+  })
+  await prisma.quoteRequest.upsert({
+    where:  { id: 'qr-2' },
+    update: {},
+    create: {
+      id: 'qr-2', organizationId: orgId,
+      workOrderId: 'wo-qr-2',
+      serviceType: 'PERIODIC_SERVICE',
+      description: 'טיפול תקופתי — 60,000 ק״מ. ספורטאג׳ — בקשת לקוח.',
+      urgency: 'NORMAL',
+      status: 'PENDING',
+    },
+  })
+
+  // WO for Toyota Corolla 2019 (veh-1) — GASOLINE (specific Toyota Corolla schedule)
+  await prisma.workOrder.upsert({
+    where: { id: 'wo-qr-3' },
+    update: {},
+    create: {
+      id: 'wo-qr-3', organizationId: orgId,
+      workOrderNumber: 'WO-2026-0103',
+      status: 'PENDING',
+      complaint: 'טיפול תקופתי — 60,000 ק״מ',
+      laborHours: 0, laborRate: 295, partsTotal: 0, totalPrice: 0,
+      mileage: 62000,
+      customerId: david.id, vehicleId: corolla.id,
+    },
+  })
+  await prisma.quoteRequest.upsert({
+    where:  { id: 'qr-3' },
+    update: {},
+    create: {
+      id: 'qr-3', organizationId: orgId,
+      workOrderId: 'wo-qr-3',
+      serviceType: 'PERIODIC_SERVICE',
+      description: 'טיפול תקופתי — 62,000 ק״מ. קורולה — כולל בדיקת רצועת טיימינג.',
+      urgency: 'NORMAL',
+      status: 'PENDING',
+    },
+  })
+
   console.log('✓ Seed complete — org: מוסך הדגמה')
   console.log('  Users (all password: admin123):')
   console.log('    owner@garage.com        → OWNER')
