@@ -1,18 +1,24 @@
 /**
- * Maintenance Schedule Engine
+ * Maintenance Schedule Engine — David Malka Service Book
  *
- * Resolves a structured service schedule for a vehicle + mileage.
+ * Resolves the correct service interval for a vehicle + mileage.
  *
- * Matching priority:
- *   1. Exact match  — make + model + year range + fuelType + transmission
- *   2. Partial match — make + model + year range (any fuelType / transmission)
- *   3. Generic fallback — keyed by fuelType only (make = '__generic__')
+ * Matching priority (4 passes):
+ *   1. Exact   — make + model + year + fuelType + transmission
+ *   2. Fuel    — make + model + year + fuelType  (any transmission)
+ *   3. Model   — make + model + year             (any fuel/trans)
+ *   4. Generic — fuelType only (make = '__generic__')
+ *
+ * For each pass, ALL matching schedules (across all intervals) are fetched.
+ * The interval whose `intervalKm` is closest to (but ≤) the vehicle's mileage
+ * is selected. If the mileage is below the smallest interval, the first service
+ * is returned.
  *
  * The engine NEVER hands off to AI for schedule items.
- * AI is allowed to explain or annotate, but the returned item list is always
- * sourced from this structured data.
+ * AI is allowed to explain or annotate, but the item list is always sourced
+ * from this structured data.
  *
- * LABOR_RATE and VAT_RATE are kept in sync with quote-engine.ts.
+ * Supported intervals: 15,000 / 30,000 / 60,000 / 90,000 / 120,000 km
  */
 
 import { prisma } from './prisma'
@@ -52,7 +58,7 @@ export interface GroupedItems {
   safety:      ServiceItem[]
 }
 
-/** Split items into three advisory tiers */
+/** Split items into the three advisory tiers */
 export function groupByPriority(items: ServiceItem[]): GroupedItems {
   return {
     required:    items.filter(i => i.priority === 'REQUIRED'),
@@ -62,40 +68,48 @@ export function groupByPriority(items: ServiceItem[]): GroupedItems {
 }
 
 export interface ScheduleResult {
-  scheduleId:       string
-  intervalKm:       number
-  scheduledMileage: number   // nearest milestone for this vehicle (e.g. 60 000)
-  intervalLabel:    string   // "טיפול 60,000 ק״מ"
-  items:            ServiceItem[]
-  totalLaborHours:  number
+  scheduleId:        string
+  intervalKm:        number
+  scheduledMileage:  number   // = intervalKm of the selected schedule
+  intervalLabel:     string   // "טיפול 60,000 ק״מ"
+  items:             ServiceItem[]
+  totalLaborHours:   number
   requiredLaborHours: number
-  partsTotal:       number   // required parts only (sum of unitPrice × qty)
-  laborTotal:       number   // requiredLaborHours × LABOR_RATE_ILS
-  laborRate:        number
-  subtotal:         number
-  vat:              number
-  total:            number
-  isGeneric:        boolean   // true if no exact match → generic fallback used
-  matchNote?:       string    // e.g. "התאמה לפי דגם בלבד (סוג דלק לא ידוע)"
-  scheduleNotes?:   string    // notes from the schedule record itself
+  partsTotal:        number   // required parts only (sum unitPrice × qty)
+  laborTotal:        number   // requiredLaborHours × LABOR_RATE_ILS
+  laborRate:         number
+  subtotal:          number
+  vat:               number
+  total:             number
+  isGeneric:         boolean  // true if generic fallback was used
+  matchNote?:        string   // e.g. "התאמה לפי דגם בלבד"
+  scheduleNotes?:    string   // notes from the schedule record
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-/** Normalise manufacturer name for comparison — title-case, trimmed */
 function normaliseMake(s: string): string {
-  return s.trim()
-    .toLowerCase()
-    .replace(/\b\w/g, c => c.toUpperCase())
-}
-
-/** Round a mileage to the nearest multiple of intervalKm */
-function nearestMilestone(mileage: number, intervalKm: number): number {
-  return Math.round(mileage / intervalKm) * intervalKm
+  return s.trim().toLowerCase().replace(/\b\w/g, c => c.toUpperCase())
 }
 
 function formatMileage(km: number): string {
   return km.toLocaleString('he-IL')
+}
+
+/**
+ * Given a list of available intervalKm values and the vehicle's current mileage,
+ * returns the highest interval that is ≤ mileage.
+ * If the mileage is below all intervals, returns the smallest interval (first service).
+ */
+function selectInterval(intervals: number[], mileage: number): number {
+  // Deduplicate without spread-on-Set (es5 target)
+  const seen: Record<number, boolean> = {}
+  const unique: number[] = []
+  for (const km of intervals) { if (!seen[km]) { seen[km] = true; unique.push(km) } }
+  const sorted = unique.sort((a, b) => a - b)
+  if (sorted.length === 0) return 60000
+  const past = sorted.filter(km => km <= mileage)
+  return past.length > 0 ? past[past.length - 1] : sorted[0]
 }
 
 /** Convert a Prisma MaintenanceItem (Decimal fields) to ServiceItem */
@@ -126,16 +140,14 @@ function toServiceItem(row: {
 }
 
 function buildResult(
-  scheduleId: string,
-  intervalKm: number,
-  mileage: number,
-  items: ServiceItem[],
-  isGeneric: boolean,
-  matchNote: string | undefined,
+  scheduleId:    string,
+  intervalKm:    number,
+  items:         ServiceItem[],
+  isGeneric:     boolean,
+  matchNote:     string | undefined,
   scheduleNotes: string | undefined,
 ): ScheduleResult {
-  const scheduledMileage = nearestMilestone(mileage, intervalKm)
-  const label = `טיפול ${formatMileage(scheduledMileage)} ק״מ`
+  const label = `טיפול ${formatMileage(intervalKm)} ק״מ`
 
   const requiredItems = items.filter(i => i.required)
 
@@ -154,7 +166,7 @@ function buildResult(
   return {
     scheduleId,
     intervalKm,
-    scheduledMileage,
+    scheduledMileage: intervalKm,
     intervalLabel: label,
     items: [...items].sort((a, b) => a.sortOrder - b.sortOrder),
     totalLaborHours,
@@ -183,10 +195,21 @@ const ITEM_SELECT = {
   required: true, priority: true, notes: true, sortOrder: true,
 }
 
-/** Find the best matching schedule row for a vehicle spec */
-async function findSchedule(
-  spec: VehicleSpec,
-): Promise<{ scheduleId: string; isGeneric: boolean; matchNote?: string; scheduleNotes?: string; rows: ServiceItem[] } | null> {
+const SCHED_SELECT = { id: true, intervalKm: true, notes: true }
+
+type SchedRow = { id: string; intervalKm: number; notes: string | null }
+
+interface FindSchedulesResult {
+  schedules:  SchedRow[]
+  isGeneric:  boolean
+  matchNote?: string
+}
+
+/**
+ * Find ALL schedules matching a vehicle (across all intervals).
+ * Returns the best-quality match group (4 passes).
+ */
+async function findSchedules(spec: VehicleSpec): Promise<FindSchedulesResult | null> {
   const make  = normaliseMake(spec.make)
   const model = spec.model.trim()
   const year  = spec.year
@@ -195,7 +218,7 @@ async function findSchedule(
 
   // ── Pass 1: exact — make + model + year + fuelType + transmission ────────────
   if (fuel && trans) {
-    const exact = await prisma.maintenanceSchedule.findFirst({
+    const rows = await prisma.maintenanceSchedule.findMany({
       where: {
         make:         { equals: make,  mode: 'insensitive' },
         model:        { equals: model, mode: 'insensitive' },
@@ -204,79 +227,63 @@ async function findSchedule(
         fuelType:     fuel,
         transmission: trans,
       },
-      include: { items: { select: ITEM_SELECT } },
+      select: SCHED_SELECT,
     })
-    if (exact) {
-      return {
-        scheduleId: exact.id,
-        isGeneric:  false,
-        scheduleNotes: exact.notes ?? undefined,
-        rows: exact.items.map(toServiceItem),
-      }
-    }
+    if (rows.length > 0) return { schedules: rows, isGeneric: false }
   }
 
   // ── Pass 2: make + model + year + fuelType (any transmission) ───────────────
   if (fuel) {
-    const byFuel = await prisma.maintenanceSchedule.findFirst({
+    const rows = await prisma.maintenanceSchedule.findMany({
       where: {
-        make:     { equals: make,  mode: 'insensitive' },
+        make:     { equals: make, mode: 'insensitive' },
         model:    { equals: model, mode: 'insensitive' },
         yearFrom: { lte: year },
         yearTo:   { gte: year },
         fuelType: fuel,
+        NOT: { make: '__generic__' },
       },
-      include: { items: { select: ITEM_SELECT } },
+      select: SCHED_SELECT,
     })
-    if (byFuel) {
-      return {
-        scheduleId: byFuel.id,
-        isGeneric:  false,
-        matchNote:  'התאמה לפי יצרן, דגם וסוג דלק',
-        scheduleNotes: byFuel.notes ?? undefined,
-        rows: byFuel.items.map(toServiceItem),
-      }
+    if (rows.length > 0) {
+      return { schedules: rows, isGeneric: false, matchNote: 'התאמה לפי יצרן, דגם וסוג דלק' }
     }
   }
 
   // ── Pass 3: make + model + year (any fuel/trans) ─────────────────────────────
-  const byModel = await prisma.maintenanceSchedule.findFirst({
+  const byModel = await prisma.maintenanceSchedule.findMany({
     where: {
-      make:     { equals: make,  mode: 'insensitive' },
+      make:     { equals: make, mode: 'insensitive' },
       model:    { equals: model, mode: 'insensitive' },
       yearFrom: { lte: year },
       yearTo:   { gte: year },
       NOT: { make: '__generic__' },
     },
-    include: { items: { select: ITEM_SELECT } },
+    select: SCHED_SELECT,
   })
-  if (byModel) {
+  if (byModel.length > 0) {
     return {
-      scheduleId: byModel.id,
-      isGeneric:  false,
-      matchNote:  'התאמה לפי יצרן ודגם בלבד — סוג דלק לא אומת',
-      scheduleNotes: byModel.notes ?? undefined,
-      rows: byModel.items.map(toServiceItem),
+      schedules: byModel,
+      isGeneric: false,
+      matchNote: 'התאמה לפי יצרן ודגם בלבד — נדרש אימות לפי קוד מנוע / גיר לפני שליחה ללקוח',
     }
   }
 
-  // ── Pass 4: generic fallback by fuel type ────────────────────────────────────
+  // ── Pass 4: generic fallback by fuelType ─────────────────────────────────────
   const resolvedFuel = fuel ?? 'GASOLINE'
-  const generic = await prisma.maintenanceSchedule.findFirst({
+  const generic = await prisma.maintenanceSchedule.findMany({
     where: {
       make:     '__generic__',
       model:    '__generic__',
       fuelType: resolvedFuel,
     },
-    include: { items: { select: ITEM_SELECT } },
+    select: SCHED_SELECT,
   })
-  if (generic) {
+  if (generic.length > 0) {
     return {
-      scheduleId: generic.id,
-      isGeneric:  true,
-      matchNote:  'לא נמצאה התאמה ספציפית — נעשה שימוש בלוח זמנים כללי',
-      scheduleNotes: generic.notes ?? undefined,
-      rows: generic.items.map(toServiceItem),
+      schedules: generic,
+      isGeneric: true,
+      matchNote: 'לא נמצאה התאמה ספציפית — לוח זמנים כללי. נדרש אימות לפי קוד מנוע והוראות יצרן לפני שליחה ללקוח.',
     }
   }
 
@@ -288,30 +295,32 @@ async function findSchedule(
 /**
  * Resolve the maintenance schedule for a vehicle + mileage.
  *
- * Returns null only when the DB contains no generic fallback (should never
- * happen after seeding).
+ * Selects the highest interval ≤ mileage from the best-matching schedule group.
+ * Returns null only when the DB has no generic fallback (should never happen
+ * after seeding).
  */
-export async function resolveSchedule(
-  spec: VehicleSpec,
-): Promise<ScheduleResult | null> {
-  const match = await findSchedule(spec)
+export async function resolveSchedule(spec: VehicleSpec): Promise<ScheduleResult | null> {
+  const match = await findSchedules(spec)
   if (!match) return null
 
-  // Determine interval from the matched schedule record
-  const schedRow = await prisma.maintenanceSchedule.findUnique({
-    where:  { id: match.scheduleId },
-    select: { intervalKm: true },
+  // Pick the best interval for this mileage
+  const targetKm   = selectInterval(match.schedules.map(s => s.intervalKm), spec.mileage)
+  const targetSched = match.schedules.find(s => s.intervalKm === targetKm)!
+
+  // Load full items for the selected schedule
+  const full = await prisma.maintenanceSchedule.findUnique({
+    where:   { id: targetSched.id },
+    include: { items: { select: ITEM_SELECT } },
   })
-  const intervalKm = schedRow?.intervalKm ?? 60000
+  if (!full) return null
 
   return buildResult(
-    match.scheduleId,
-    intervalKm,
-    spec.mileage,
-    match.rows,
+    targetSched.id,
+    targetKm,
+    full.items.map(toServiceItem),
     match.isGeneric,
     match.matchNote,
-    match.scheduleNotes,
+    targetSched.notes ?? undefined,
   )
 }
 
@@ -328,6 +337,7 @@ export const CATEGORY_LABELS: Record<string, string> = {
   GLOW_PLUGS:     'נרות לבה',
   BRAKE_FLUID:    'נוזל בלמים',
   GEARBOX_OIL:    'שמן גיר',
+  TIMING_BELT:    'רצועת תזמון',
   INSPECTION:     'בדיקה',
   // ── Recommended tier ──────────────────────────────────────────────────────
   BATTERY:        'מצבר',
@@ -350,6 +360,7 @@ export const CATEGORY_ICONS: Record<string, string> = {
   GLOW_PLUGS:     '🔥',
   BRAKE_FLUID:    '🔴',
   GEARBOX_OIL:    '⚙️',
+  TIMING_BELT:    '🔗',
   INSPECTION:     '🔍',
   // ── Recommended tier ──────────────────────────────────────────────────────
   BATTERY:        '🔋',
