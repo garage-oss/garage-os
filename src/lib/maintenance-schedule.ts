@@ -71,6 +71,7 @@ export interface ScheduleResult {
   scheduleId:        string
   intervalKm:        number
   scheduledMileage:  number   // = intervalKm of the selected schedule
+  nextIntervalKm?:   number   // next service interval in the same schedule group
   intervalLabel:     string   // "טיפול 60,000 ק״מ"
   items:             ServiceItem[]
   totalLaborHours:   number
@@ -304,8 +305,20 @@ export async function resolveSchedule(spec: VehicleSpec): Promise<ScheduleResult
   if (!match) return null
 
   // Pick the best interval for this mileage
-  const targetKm   = selectInterval(match.schedules.map(s => s.intervalKm), spec.mileage)
+  const targetKm    = selectInterval(match.schedules.map(s => s.intervalKm), spec.mileage)
   const targetSched = match.schedules.find(s => s.intervalKm === targetKm)!
+
+  // Compute the next interval above the matched one (for "next service" display)
+  const seenKm: Record<number, boolean> = {}
+  const sortedKms: number[] = []
+  for (const s of match.schedules) {
+    if (!seenKm[s.intervalKm]) { seenKm[s.intervalKm] = true; sortedKms.push(s.intervalKm) }
+  }
+  sortedKms.sort((a, b) => a - b)
+  const currentIdx    = sortedKms.indexOf(targetKm)
+  const nextIntervalKm = (currentIdx >= 0 && currentIdx < sortedKms.length - 1)
+    ? sortedKms[currentIdx + 1]
+    : undefined
 
   // Load full items for the selected schedule
   const full = await prisma.maintenanceSchedule.findUnique({
@@ -314,7 +327,7 @@ export async function resolveSchedule(spec: VehicleSpec): Promise<ScheduleResult
   })
   if (!full) return null
 
-  return buildResult(
+  const result = buildResult(
     targetSched.id,
     targetKm,
     full.items.map(toServiceItem),
@@ -322,6 +335,7 @@ export async function resolveSchedule(spec: VehicleSpec): Promise<ScheduleResult
     match.matchNote,
     targetSched.notes ?? undefined,
   )
+  return { ...result, nextIntervalKm }
 }
 
 // ─── Category labels ─────────────────────────────────────────────────────────

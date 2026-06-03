@@ -156,6 +156,15 @@ function gearboxLabel(v: LookedUpVehicle): string {
   return v.gearbox ?? (v.transmission ? (TRANS_LABELS[v.transmission] ?? v.transmission) : '') ?? ''
 }
 
+/** Client-side preview: estimate which standard interval will be matched for a given km */
+const STANDARD_INTERVALS = [15000, 30000, 60000, 90000, 120000]
+
+function predictIntervalLabel(km: number): string {
+  const past = STANDARD_INTERVALS.filter(m => m <= km)
+  const matched = past.length > 0 ? past[past.length - 1] : STANDARD_INTERVALS[0]
+  return `טיפול ${matched.toLocaleString('he-IL')} ק״מ`
+}
+
 function formatPlate(raw: string): string {
   const d = raw.replace(/\D/g, '')
   if (d.length === 7) return `${d.slice(0, 2)}-${d.slice(2, 5)}-${d.slice(5)}`
@@ -550,12 +559,16 @@ export function PeriodicServicePanel({
             {/* Detected vehicle */}
             <VehicleCard vehicle={vehicle} onChangePlate={goToPlate} />
 
-            {/* Mileage */}
+            {/* Mileage — required */}
             <div className="space-y-1.5">
-              <label className="flex items-center gap-1.5 text-xs font-bold text-[#8892a4] uppercase tracking-widest">
-                <Gauge size={11} />
+              <label className="flex items-center gap-1.5 text-xs font-bold text-[#c5cde2] uppercase tracking-widest">
+                <Gauge size={11} className="text-emerald-400" />
                 ק״מ נוכחי
+                <span className="text-red-400 font-black">*</span>
               </label>
+              <p className="text-[11px] text-[#4a5270] -mt-0.5">
+                נדרש לזיהוי אוטומטי של אינטרוול השירות המתאים
+              </p>
               <div className="relative">
                 <input
                   type="number"
@@ -565,10 +578,16 @@ export function PeriodicServicePanel({
                   onChange={e => setMileage(e.target.value)}
                   onKeyDown={e => e.key === 'Enter' && !needsFuel && generate()}
                   placeholder="לדוגמה: 60000"
-                  className="w-full bg-[#1a1d27] border border-[#2e3147] text-[#e2e8f0] rounded-xl px-4 py-3 text-sm font-mono outline-none focus:border-emerald-500/60 focus:ring-2 focus:ring-emerald-500/15 transition-all placeholder:text-[#2e3147]"
+                  className="w-full bg-[#1a1d27] border border-[#2e3147] text-[#e2e8f0] rounded-xl px-4 py-3 text-lg font-mono font-bold outline-none focus:border-emerald-500/60 focus:ring-2 focus:ring-emerald-500/15 transition-all placeholder:text-[#2e3147] placeholder:text-sm placeholder:font-normal"
                 />
-                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-xs text-[#4a5270]">ק״מ</span>
+                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-[#4a5270]">ק״מ</span>
               </div>
+              {/* Preview predicted interval as user types */}
+              {mileage && parseInt(mileage, 10) > 0 && (
+                <p className="text-[11px] text-emerald-400/70 text-left ltr font-mono">
+                  יזוהה: {predictIntervalLabel(parseInt(mileage, 10))}
+                </p>
+              )}
             </div>
 
             {/* Fuel override — only when lookup returned no fuelType */}
@@ -672,24 +691,62 @@ export function PeriodicServicePanel({
         return (
           <div className="px-5 pt-4 pb-5 space-y-5">
 
-            {/* Service badge */}
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2.5">
-                <span className="text-2xl">🔧</span>
-                <div>
-                  <p className="text-base font-black text-[#e2e8f0]">{schedule.intervalLabel}</p>
-                  <p className="text-xs text-[#4a5270] mt-0.5">
-                    ק״מ נוכחי: {km.toLocaleString('he-IL')}
-                    {usedFuelType     && ` · ${FUEL_LABELS[usedFuelType]  ?? usedFuelType}`}
-                    {usedTransmission && ` · ${TRANS_LABELS[usedTransmission] ?? usedTransmission}`}
+            {/* ── Interval summary — 3-column card ────────────────────────────── */}
+            <div className="bg-[#1a1d27] border border-[#252836] rounded-xl overflow-hidden">
+              <div className="grid grid-cols-3 divide-x divide-[#252836] rtl:divide-x-reverse">
+                {/* Current mileage */}
+                <div className="px-3 py-3 text-center">
+                  <p className="text-[9px] font-bold text-[#4a5270] uppercase tracking-widest mb-1.5">ק״מ נוכחי</p>
+                  <p className="text-base font-black text-[#c5cde2] tabular-nums leading-tight">
+                    {km.toLocaleString('he-IL')}
                   </p>
                 </div>
+                {/* Matched interval — highlighted */}
+                <div className="px-3 py-3 text-center bg-emerald-500/6">
+                  <p className="text-[9px] font-bold text-emerald-400 uppercase tracking-widest mb-1.5">טיפול זוהה</p>
+                  <p className="text-base font-black text-emerald-300 tabular-nums leading-tight">
+                    {schedule.intervalKm.toLocaleString('he-IL')}
+                  </p>
+                  {schedule.isGeneric && (
+                    <span className="text-[9px] text-amber-400 font-bold">כללי</span>
+                  )}
+                </div>
+                {/* Next interval */}
+                <div className="px-3 py-3 text-center">
+                  <p className="text-[9px] font-bold text-[#4a5270] uppercase tracking-widest mb-1.5">טיפול הבא</p>
+                  {schedule.nextIntervalKm ? (
+                    <>
+                      <p className="text-base font-black text-[#8892a4] tabular-nums leading-tight">
+                        {schedule.nextIntervalKm.toLocaleString('he-IL')}
+                      </p>
+                      <p className="text-[9px] text-[#3a4260] mt-0.5">
+                        +{(schedule.nextIntervalKm - schedule.intervalKm).toLocaleString('he-IL')} ק״מ
+                      </p>
+                    </>
+                  ) : (
+                    <p className="text-sm text-[#3a4260]">—</p>
+                  )}
+                </div>
               </div>
-              {schedule.isGeneric && (
-                <span className="text-[10px] font-bold text-amber-400 border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 rounded-full shrink-0">
-                  לוח כללי
-                </span>
-              )}
+              {/* Footer row — interval label + fuel/trans chips */}
+              <div className="px-4 py-2 border-t border-[#252836] flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="text-base">🔧</span>
+                  <p className="text-sm font-black text-[#e2e8f0]">{schedule.intervalLabel}</p>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  {usedFuelType && (
+                    <span className="text-[10px] text-[#4a5270] bg-[#13161f] border border-[#1e2230] px-2 py-0.5 rounded-md">
+                      {FUEL_LABELS[usedFuelType] ?? usedFuelType}
+                    </span>
+                  )}
+                  {usedTransmission && (
+                    <span className="text-[10px] text-indigo-400 bg-indigo-500/8 border border-indigo-500/20 px-2 py-0.5 rounded-md">
+                      {TRANS_LABELS[usedTransmission] ?? usedTransmission}
+                    </span>
+                  )}
+                </div>
+              </div>
             </div>
 
             {/* Match note */}
