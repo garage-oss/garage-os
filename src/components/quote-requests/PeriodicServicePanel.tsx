@@ -1,26 +1,23 @@
 'use client'
 
 /**
- * PeriodicServicePanel
+ * PeriodicServicePanel — plate-first periodic service quote.
  *
- * Replaces the generic AI analysis panel for PERIODIC_SERVICE quote requests.
+ * Phases:
+ *   plate       → user enters / confirms plate number
+ *   looking-up  → /api/vehicle-lookup  (gov.il or any swapped provider)
+ *   mileage     → detected vehicle card + mileage input
+ *   generating  → /api/periodic-quote
+ *   result      → three-section service advisor layout
+ *   error       → message + back button
  *
- * Flow:
- *  1. INPUT   — plate (read-only), mileage input, optional fuel/trans selectors
- *  2. LOADING — calls /api/periodic-quote
- *  3. RESULT  — three-section service advisor layout:
- *               ✅ REQUIRED     — manufacturer mandated, always included
- *               💡 RECOMMENDED  — advisor upsell, one-click add, revenue counter
- *               ⚠️  SAFETY       — safety-critical findings, red-badge items
- *
- * The engine is 100% rule-based. AI does NOT generate or override schedule items.
+ * No AI involvement. No manual vehicle selection.
  */
 
-import { useState }        from 'react'
-import { formatCurrency }  from '@/lib/utils'
+import { useState, useEffect, useRef } from 'react'
+import { formatCurrency }              from '@/lib/utils'
 import {
   CATEGORY_ICONS,
-  CATEGORY_LABELS,
   LABOR_RATE_ILS,
   VAT_RATE,
   groupByPriority,
@@ -28,32 +25,25 @@ import {
 import type { ScheduleResult, ServiceItem } from '@/lib/maintenance-schedule'
 import type { QuoteItemEdit }               from '@/app/actions/quote-request'
 import {
-  Wrench,
-  Gauge,
-  CheckCircle2,
-  AlertTriangle,
-  ChevronDown,
-  ChevronUp,
-  Loader2,
-  Info,
-  RotateCcw,
-  Plus,
-  X,
-  ShieldAlert,
-  TrendingUp,
+  Wrench, Gauge, CheckCircle2, AlertTriangle,
+  ChevronDown, ChevronUp, Loader2, Info,
+  RotateCcw, Plus, X, ShieldAlert, TrendingUp, Search,
 } from 'lucide-react'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-interface Vehicle {
-  plate:         string
-  make:          string
-  model:         string
-  year:          number
-  engine?:       string | null
-  fuelType?:     string | null
-  transmission?: string | null
-  mileage?:      number | null
+/** Shape returned by /api/vehicle-lookup — mirrors VehicleLookupResult */
+interface LookedUpVehicle {
+  plate:          string
+  make:           string        // "TOYOTA", "KIA" — English, used for schedule matching
+  makeHe:         string        // same in gov.il; richer providers may differ
+  model:          string        // "COROLLA", "SPORTAGE"
+  trim?:          string        // "1.5 TSI", "LUXURY", etc.
+  year:           number
+  fuelType?:      string | null
+  engineVolume?:  number | null
+  transmission?:  string | null // gov.il omits this; future providers supply it
+  color?:         string | null
 }
 
 interface PeriodicQuoteResponse {
@@ -64,19 +54,22 @@ interface PeriodicQuoteResponse {
 }
 
 export interface PeriodicServicePanelProps {
-  vehicle:     Vehicle
-  workOrderId: string
-  canEdit:     boolean
-  onConfirm:   (items: QuoteItemEdit[], notes: string, laborHours: number) => void
+  initialPlate?:   string    // pre-filled from quote request
+  initialMileage?: number    // pre-filled from work order vehicle record
+  workOrderId:     string
+  canEdit:         boolean
+  onConfirm:       (items: QuoteItemEdit[], notes: string, laborHours: number) => void
 }
 
-type PanelState =
-  | { phase: 'input' }
-  | { phase: 'loading' }
-  | { phase: 'result'; data: PeriodicQuoteResponse }
-  | { phase: 'error'; message: string }
+type PanelPhase =
+  | { phase: 'plate' }
+  | { phase: 'looking-up' }
+  | { phase: 'mileage';    vehicle: LookedUpVehicle }
+  | { phase: 'generating'; vehicle: LookedUpVehicle }
+  | { phase: 'result';     vehicle: LookedUpVehicle; data: PeriodicQuoteResponse }
+  | { phase: 'error';      message: string; prevVehicle?: LookedUpVehicle }
 
-// ─── Hebrew label maps ────────────────────────────────────────────────────────
+// ─── Display maps ─────────────────────────────────────────────────────────────
 
 const FUEL_LABELS: Record<string, string> = {
   GASOLINE: 'בנזין',
@@ -92,7 +85,50 @@ const TRANS_LABELS: Record<string, string> = {
   CVT:       'CVT',
 }
 
-// ─── Local helpers ────────────────────────────────────────────────────────────
+/** English manufacturer names → Hebrew for display */
+const MAKE_HE: Record<string, string> = {
+  TOYOTA:          'טויוטה',
+  KIA:             'קיה',
+  HYUNDAI:         'יונדאי',
+  SKODA:           'סקודה',
+  MAZDA:           'מאזדה',
+  NISSAN:          'ניסאן',
+  RENAULT:         'רנו',
+  SUBARU:          'סובארו',
+  FIAT:            'פיאט',
+  MERCEDES:        'מרצדס',
+  'MERCEDES-BENZ': 'מרצדס',
+  DACIA:           'דאציה',
+  CITROEN:         'סיטרואן',
+  DODGE:           'דודג',
+  VOLKSWAGEN:      'פולקסווגן',
+  BMW:             'BMW',
+  FORD:            'פורד',
+  HONDA:           'הונדה',
+  MITSUBISHI:      'מיצובישי',
+  SEAT:            'סיאט',
+  OPEL:            'אופל',
+  PEUGEOT:         "פיג׳ו",
+  AUDI:            'אאודי',
+  VOLVO:           'וולבו',
+  SUZUKI:          'סוזוקי',
+  CHEVROLET:       'שברולט',
+  JEEP:            "ג׳יפ",
+  LEXUS:           'לקסוס',
+  TESLA:           'טסלה',
+  'ALFA ROMEO':    'אלפא רומיאו',
+  'ALFA-ROMEO':    'אלפא רומיאו',
+  'LAND ROVER':    'לנד רובר',
+  MINI:            'MINI',
+  PORSCHE:         'פורשה',
+  INFINITI:        'אינפיניטי',
+  HAVAL:           'האבאל',
+  CHERY:           "צ׳רי",
+  MG:              'MG',
+  CUPRA:           'קופרה',
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function r2(n: number) { return Math.round(n * 100) / 100 }
 
@@ -100,57 +136,192 @@ function itemCost(item: ServiceItem): number {
   return r2(item.unitPrice * item.quantity + item.laborHours * LABOR_RATE_ILS)
 }
 
-// ─── Component ────────────────────────────────────────────────────────────────
+function hebrewMake(make: string): string {
+  return MAKE_HE[make.toUpperCase()] ?? make
+}
+
+function titleCase(s: string): string {
+  return s.toLowerCase().replace(/\b\w/g, c => c.toUpperCase())
+}
+
+function engineLabel(v: LookedUpVehicle): string {
+  if (v.trim) return v.trim
+  if (v.engineVolume) return `${(v.engineVolume / 1000).toFixed(1)}L`
+  return ''
+}
+
+function formatPlate(raw: string): string {
+  const d = raw.replace(/\D/g, '')
+  if (d.length === 7) return `${d.slice(0, 2)}-${d.slice(2, 5)}-${d.slice(5)}`
+  if (d.length === 8) return `${d.slice(0, 3)}-${d.slice(3, 5)}-${d.slice(5)}`
+  return raw
+}
+
+// ─── Vehicle identity card ────────────────────────────────────────────────────
+
+function VehicleCard({
+  vehicle,
+  onChangePlate,
+  compact = false,
+}: {
+  vehicle: LookedUpVehicle
+  onChangePlate: () => void
+  compact?: boolean
+}) {
+  const eng  = engineLabel(vehicle)
+  const fuel = vehicle.fuelType ? (FUEL_LABELS[vehicle.fuelType] ?? vehicle.fuelType) : null
+  const trans = vehicle.transmission ? (TRANS_LABELS[vehicle.transmission] ?? vehicle.transmission) : null
+
+  if (compact) {
+    return (
+      <div className="flex items-center justify-between px-4 py-2.5 bg-[#13161f] border-b border-[#1e2230]">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <span className="text-sm shrink-0">🚗</span>
+          <div className="min-w-0">
+            <span className="text-xs font-bold text-[#c5cde2]">
+              {hebrewMake(vehicle.make)} {titleCase(vehicle.model)} {vehicle.year}
+            </span>
+            <div className="flex items-center gap-1.5 mt-0.5">
+              {eng  && <span className="text-[10px] text-[#4a5270]">{eng}</span>}
+              {fuel && <span className="text-[10px] text-[#4a5270]">· {fuel}</span>}
+              {trans && <span className="text-[10px] text-[#4a5270]">· {trans}</span>}
+              <span className="text-[10px] text-[#2e3147] font-mono">· {formatPlate(vehicle.plate)}</span>
+            </div>
+          </div>
+        </div>
+        <button
+          onClick={onChangePlate}
+          className="text-[10px] text-[#3a4260] hover:text-[#8892a4] transition-colors shrink-0 mr-1"
+        >
+          שנה ←
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <div className="bg-[#1a1d27] border border-emerald-500/25 rounded-xl px-4 py-3.5">
+      <div className="flex items-start gap-3">
+        <div className="w-10 h-10 bg-emerald-500/15 rounded-xl flex items-center justify-center text-lg shrink-0">
+          🚗
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-base font-black text-[#e2e8f0] leading-tight">
+            {hebrewMake(vehicle.make)} {titleCase(vehicle.model)} {vehicle.year}
+          </p>
+          <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
+            {eng && (
+              <span className="text-xs font-bold text-[#8892a4] border border-[#2e3147] bg-[#13161f] px-2 py-0.5 rounded-md">
+                {eng}
+              </span>
+            )}
+            {trans && (
+              <span className="text-xs font-bold text-indigo-400 border border-indigo-500/20 bg-indigo-500/8 px-2 py-0.5 rounded-md">
+                {trans}
+              </span>
+            )}
+            {fuel && (
+              <span className="text-xs font-bold text-[#8892a4] border border-[#2e3147] bg-[#13161f] px-2 py-0.5 rounded-md">
+                {fuel}
+              </span>
+            )}
+            <span className="text-[11px] text-[#3a4260] font-mono border border-[#1e2230] px-2 py-0.5 rounded-md">
+              {formatPlate(vehicle.plate)}
+            </span>
+          </div>
+        </div>
+        <span className="flex items-center gap-1 text-[10px] font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-1 rounded-full shrink-0 mt-0.5">
+          <CheckCircle2 size={9} />
+          אומת
+        </span>
+      </div>
+      <button
+        onClick={onChangePlate}
+        className="mt-2.5 text-[10px] text-[#3a4260] hover:text-[#4a5270] transition-colors"
+      >
+        ← שנה רכב
+      </button>
+    </div>
+  )
+}
+
+// ─── Main component ───────────────────────────────────────────────────────────
 
 export function PeriodicServicePanel({
-  vehicle,
-  workOrderId,
+  initialPlate,
+  initialMileage,
+  workOrderId: _workOrderId,
   canEdit,
   onConfirm,
 }: PeriodicServicePanelProps) {
-  // ── Form state ──────────────────────────────────────────────────────────────
-  const [mileage,      setMileage]      = useState(vehicle.mileage ? String(vehicle.mileage) : '')
-  const [fuelType,     setFuelType]     = useState(vehicle.fuelType     ?? '')
-  const [transmission, setTransmission] = useState(vehicle.transmission ?? '')
+  // ── Form inputs ─────────────────────────────────────────────────────────────
+  const [plate,        setPlate]        = useState(initialPlate ? formatPlate(initialPlate) : '')
+  const [mileage,      setMileage]      = useState(initialMileage ? String(initialMileage) : '')
+  const [fuelOverride, setFuelOverride] = useState('')   // only when lookup returns no fuelType
+  const [transmission, setTransmission] = useState('')   // user-selected; supplements lookup data
 
-  // ── Panel state ─────────────────────────────────────────────────────────────
-  const [state,         setState]        = useState<PanelState>({ phase: 'input' })
+  // ── Phase machine ───────────────────────────────────────────────────────────
+  const [state,         setState]        = useState<PanelPhase>({ phase: 'plate' })
   const [confirmed,     setConfirmed]    = useState(false)
   const [selectedRec,   setSelectedRec]  = useState<Set<number>>(new Set())
   const [selectedSafe,  setSelectedSafe] = useState<Set<number>>(new Set())
   const [expandedNotes, setExpandedNotes] = useState<Record<string, boolean>>({})
 
-  // ── Field visibility ────────────────────────────────────────────────────────
-  const needsFuel  = !vehicle.fuelType
-  const needsTrans = !vehicle.transmission
+  // ── Auto-lookup on mount when initialPlate is provided ───────────────────────
+  const didAutoLookup = useRef(false)
+  useEffect(() => {
+    if (!initialPlate || didAutoLookup.current) return
+    didAutoLookup.current = true
+    const digits = initialPlate.replace(/\D/g, '')
+    if (digits.length < 7) return
 
-  // ── Toggle helpers ──────────────────────────────────────────────────────────
-  function toggleRec(idx: number) {
-    setSelectedRec(prev => {
-      const next = new Set(prev)
-      next.has(idx) ? next.delete(idx) : next.add(idx)
-      return next
-    })
-  }
+    setState({ phase: 'looking-up' })
+    fetch(`/api/vehicle-lookup?plate=${encodeURIComponent(digits)}`)
+      .then(r => r.json())
+      .then(json => {
+        if (json.found && json.vehicle) {
+          setState({ phase: 'mileage', vehicle: json.vehicle as LookedUpVehicle })
+        } else {
+          setState({ phase: 'plate' }) // plate pre-filled; user can retry manually
+        }
+      })
+      .catch(() => setState({ phase: 'plate' }))
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps — run once on mount
 
-  function toggleSafe(idx: number) {
-    setSelectedSafe(prev => {
-      const next = new Set(prev)
-      next.has(idx) ? next.delete(idx) : next.add(idx)
-      return next
-    })
-  }
+  // ── Manual plate lookup ──────────────────────────────────────────────────────
+  async function lookupPlate() {
+    const digits = plate.replace(/\D/g, '')
+    if (digits.length < 7) return
 
-  function toggleNote(key: string) {
-    setExpandedNotes(prev => ({ ...prev, [key]: !prev[key] }))
+    setState({ phase: 'looking-up' })
+    try {
+      const res  = await fetch(`/api/vehicle-lookup?plate=${encodeURIComponent(digits)}`)
+      const json = await res.json()
+      if (!res.ok) {
+        setState({ phase: 'error', message: json.error ?? 'שגיאה בחיפוש הרכב' })
+        return
+      }
+      if (!json.found) {
+        setState({ phase: 'error', message: 'לא נמצא רכב עם הלוחית הזו — בדוק את המספר' })
+        return
+      }
+      setState({ phase: 'mileage', vehicle: json.vehicle as LookedUpVehicle })
+    } catch {
+      setState({ phase: 'error', message: 'שגיאת רשת — נסה שוב' })
+    }
   }
 
   // ── Generate quote ──────────────────────────────────────────────────────────
   async function generate() {
+    if (state.phase !== 'mileage') return
     const km = parseInt(mileage, 10)
-    if (!km || km < 0) return
+    if (!km || km <= 0) return
 
-    setState({ phase: 'loading' })
+    const vehicle = state.vehicle
+    const resolvedFuel = vehicle.fuelType || fuelOverride || null
+    if (!resolvedFuel) return  // fuel still unknown — selector shown in UI
+
+    setState({ phase: 'generating', vehicle })
     setSelectedRec(new Set())
     setSelectedSafe(new Set())
     setExpandedNotes({})
@@ -165,35 +336,31 @@ export function PeriodicServicePanel({
           vehicleModel:        vehicle.model,
           vehicleYear:         vehicle.year,
           vehicleMileage:      km,
-          vehicleFuelType:     fuelType     || undefined,
-          vehicleTransmission: transmission || undefined,
+          vehicleFuelType:     resolvedFuel   || undefined,
+          vehicleTransmission: vehicle.transmission || transmission || undefined,
         }),
       })
       const json = await res.json()
       if (!res.ok) {
-        setState({ phase: 'error', message: json.message ?? 'שגיאה בטעינת לוח הטיפולים' })
+        setState({ phase: 'error', message: json.message ?? 'שגיאה בטעינת לוח הטיפולים', prevVehicle: vehicle })
         return
       }
-      setState({ phase: 'result', data: json as PeriodicQuoteResponse })
+      setState({ phase: 'result', vehicle, data: json as PeriodicQuoteResponse })
     } catch {
-      setState({ phase: 'error', message: 'שגיאת רשת — נסה שוב' })
+      setState({ phase: 'error', message: 'שגיאת רשת — נסה שוב', prevVehicle: vehicle })
     }
   }
 
   // ── Fill quote form ─────────────────────────────────────────────────────────
   function handleConfirm() {
     if (state.phase !== 'result') return
-    const { schedule } = state.data
+    const { data: { schedule }, vehicle } = state
     const groups = groupByPriority(schedule.items)
 
     const selRecItems  = groups.recommended.filter((_, idx) => selectedRec.has(idx))
     const selSafeItems = groups.safety.filter((_, idx) => selectedSafe.has(idx))
-
-    // All items that are being included (required always, selected optional)
-    const allIncluded = [...groups.required, ...selRecItems, ...selSafeItems]
-
-    // Line items exclude INSPECTION (labor-only service)
-    const partItems = allIncluded.filter(i => i.category !== 'INSPECTION')
+    const allIncluded  = [...groups.required, ...selRecItems, ...selSafeItems]
+    const partItems    = allIncluded.filter(i => i.category !== 'INSPECTION')
 
     const items: QuoteItemEdit[] = partItems.map(i => ({
       description: i.nameHe + (i.notes ? ` — ${i.notes}` : ''),
@@ -202,56 +369,77 @@ export function PeriodicServicePanel({
       total:       r2(i.quantity * i.unitPrice),
     }))
 
-    // Total labor including inspection hours
     const totalLaborHours = r2(allIncluded.reduce((s, i) => s + i.laborHours, 0))
-
-    // Build work notes
     const km = parseInt(mileage, 10)
+    const vehicleName = `${hebrewMake(vehicle.make)} ${titleCase(vehicle.model)} ${vehicle.year}`
+
     const noteLines: string[] = [
-      `${schedule.intervalLabel} — ${vehicle.make} ${vehicle.model} ${vehicle.year}`,
+      `${schedule.intervalLabel} — ${vehicleName}`,
       `ק״מ נוכחי: ${km.toLocaleString('he-IL')}`,
       '',
       'פריטים נדרשים (לפי יצרן):',
       ...groups.required.map(i => `• ${i.nameHe} — ${i.laborHours} שע׳`),
     ]
-
     if (selRecItems.length > 0) {
       noteLines.push('', 'פריטים מומלצים שנוספו:')
       selRecItems.forEach(i => noteLines.push(`• ${i.nameHe}${i.notes ? ` — ${i.notes}` : ''}`))
     }
-
     if (selSafeItems.length > 0) {
       noteLines.push('', 'התראות בטיחות שנבחרו:')
       selSafeItems.forEach(i => noteLines.push(`• ${i.nameHe}${i.notes ? ` — ${i.notes}` : ''}`))
     }
-
-    noteLines.push(
-      '',
-      '⚠️ הצעה אוטומטית לפי נתוני רכב וק״מ — כפוף לאימות לפי קוד מנוע והוראות יצרן.',
-    )
-
-    if (schedule.scheduleNotes) {
-      noteLines.push('', `הערות: ${schedule.scheduleNotes}`)
-    }
+    noteLines.push('', '⚠️ הצעה אוטומטית לפי נתוני רכב וק״מ — כפוף לאימות לפי קוד מנוע והוראות יצרן.')
+    if (schedule.scheduleNotes) noteLines.push('', `הערות: ${schedule.scheduleNotes}`)
 
     onConfirm(items, noteLines.join('\n'), totalLaborHours)
     setConfirmed(true)
   }
 
-  function reset() {
-    setState({ phase: 'input' })
+  // ── Navigation helpers ──────────────────────────────────────────────────────
+  function goToMileage() {
+    if (state.phase === 'result') {
+      setState({ phase: 'mileage', vehicle: state.vehicle })
+      setConfirmed(false)
+      setSelectedRec(new Set())
+      setSelectedSafe(new Set())
+      setExpandedNotes({})
+    }
+  }
+
+  function goToPlate() {
+    setState({ phase: 'plate' })
     setConfirmed(false)
     setSelectedRec(new Set())
     setSelectedSafe(new Set())
     setExpandedNotes({})
+    setMileage(initialMileage ? String(initialMileage) : '')
+    setTransmission('')
+    setFuelOverride('')
+  }
+
+  // ── Toggle helpers ──────────────────────────────────────────────────────────
+  function toggleRec(idx: number) {
+    setSelectedRec(prev => { const n = new Set(prev); n.has(idx) ? n.delete(idx) : n.add(idx); return n })
+  }
+  function toggleSafe(idx: number) {
+    setSelectedSafe(prev => { const n = new Set(prev); n.has(idx) ? n.delete(idx) : n.add(idx); return n })
+  }
+  function toggleNote(key: string) {
+    setExpandedNotes(prev => ({ ...prev, [key]: !prev[key] }))
   }
 
   // ─── Render ──────────────────────────────────────────────────────────────────
 
+  const currentVehicle =
+    state.phase === 'mileage'    ? state.vehicle :
+    state.phase === 'generating' ? state.vehicle :
+    state.phase === 'result'     ? state.vehicle :
+    null
+
   return (
     <div className="bg-[#0f1117] border border-[#252836] rounded-2xl overflow-hidden">
 
-      {/* ── Panel header ────────────────────────────────────────────────────── */}
+      {/* ── Panel header ───────────────────────────────────────────────────── */}
       <div className="flex items-center justify-between px-5 py-3.5 border-b border-[#1e2230]">
         <div className="flex items-center gap-2.5">
           <div className="w-7 h-7 rounded-lg bg-emerald-500/20 flex items-center justify-center">
@@ -267,7 +455,7 @@ export function PeriodicServicePanel({
         </div>
         {state.phase === 'result' && (
           <button
-            onClick={reset}
+            onClick={goToMileage}
             className="flex items-center gap-1 text-xs text-[#4a5270] hover:text-[#8892a4] transition-colors"
           >
             <RotateCcw size={12} />
@@ -276,124 +464,161 @@ export function PeriodicServicePanel({
         )}
       </div>
 
+      {/* Vehicle identity strip — shown in mileage/generating/result phases */}
+      {currentVehicle && state.phase !== 'mileage' && (
+        <VehicleCard vehicle={currentVehicle} onChangePlate={goToPlate} compact />
+      )}
+
       {/* ════════════════════════════════════════════════════════════════════════
-          PHASE 1: INPUT
+          PHASE: plate
       ════════════════════════════════════════════════════════════════════════ */}
-      {state.phase === 'input' && (
-        <div className="px-5 py-5 space-y-5">
-
-          {/* Vehicle card */}
-          <div className="bg-[#1a1d27] border border-[#252836] rounded-xl px-4 py-3 flex items-center gap-3">
-            <div className="w-9 h-9 bg-[#252836] rounded-lg flex items-center justify-center text-base">
-              🚗
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-bold text-[#e2e8f0]">
-                {vehicle.make} {vehicle.model} {vehicle.year}
-              </p>
-              <p className="text-xs text-[#4a5270] font-mono mt-0.5">{vehicle.plate}</p>
-            </div>
-            {vehicle.fuelType && (
-              <span className="text-[10px] font-bold text-[#8892a4] border border-[#2e3147] px-2 py-0.5 rounded-md shrink-0">
-                {FUEL_LABELS[vehicle.fuelType] ?? vehicle.fuelType}
-              </span>
-            )}
-          </div>
-
-          {/* Mileage */}
+      {state.phase === 'plate' && (
+        <div className="px-5 py-6 space-y-4">
           <div className="space-y-1.5">
             <label className="flex items-center gap-1.5 text-xs font-bold text-[#8892a4] uppercase tracking-widest">
-              <Gauge size={11} />
-              ק״מ נוכחי
+              <Search size={11} />
+              לוחית רישוי
             </label>
-            <div className="relative">
-              <input
-                type="number"
-                min={0}
-                step={1000}
-                value={mileage}
-                onChange={e => setMileage(e.target.value)}
-                placeholder="לדוגמה: 60000"
-                className="w-full bg-[#1a1d27] border border-[#2e3147] text-[#e2e8f0] rounded-xl px-4 py-3 text-sm font-mono outline-none focus:border-emerald-500/60 focus:ring-2 focus:ring-emerald-500/15 transition-all placeholder:text-[#2e3147]"
-              />
-              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-xs text-[#4a5270]">ק״מ</span>
-            </div>
+            <input
+              type="text"
+              value={plate}
+              onChange={e => setPlate(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && lookupPlate()}
+              placeholder="לדוגמה: 123-45-678"
+              dir="ltr"
+              className="w-full bg-[#1a1d27] border border-[#2e3147] text-[#e2e8f0] rounded-xl px-4 py-3.5 text-base font-mono tracking-widest outline-none text-center focus:border-emerald-500/60 focus:ring-2 focus:ring-emerald-500/15 transition-all placeholder:text-[#2e3147] placeholder:text-sm placeholder:tracking-normal"
+              maxLength={10}
+            />
           </div>
-
-          {/* Missing: fuel type */}
-          {needsFuel && (
-            <div className="space-y-1.5">
-              <label className="text-xs font-bold text-amber-400 uppercase tracking-widest flex items-center gap-1.5">
-                <AlertTriangle size={11} />
-                סוג דלק — לא ידוע ברכב
-              </label>
-              <div className="grid grid-cols-2 gap-2">
-                {(['GASOLINE', 'DIESEL', 'HYBRID', 'ELECTRIC'] as const).map(f => (
-                  <button
-                    key={f}
-                    type="button"
-                    onClick={() => setFuelType(f)}
-                    className={`py-2.5 rounded-xl text-sm font-bold border transition-all ${
-                      fuelType === f
-                        ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-300'
-                        : 'bg-[#1a1d27] border-[#2e3147] text-[#8892a4] hover:border-[#4a5270]'
-                    }`}
-                  >
-                    {FUEL_LABELS[f]}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Missing: transmission (optional — improves matching) */}
-          {needsTrans && (
-            <div className="space-y-1.5">
-              <label className="text-xs font-bold text-[#4a5270] uppercase tracking-widest flex items-center gap-1.5">
-                <Info size={11} />
-                תיבת הילוכים (אופציונלי)
-              </label>
-              <div className="grid grid-cols-3 gap-2">
-                {(['AUTOMATIC', 'MANUAL', 'CVT'] as const).map(t => (
-                  <button
-                    key={t}
-                    type="button"
-                    onClick={() => setTransmission(prev => prev === t ? '' : t)}
-                    className={`py-2.5 rounded-xl text-sm font-bold border transition-all ${
-                      transmission === t
-                        ? 'bg-indigo-500/20 border-indigo-500/50 text-indigo-300'
-                        : 'bg-[#1a1d27] border-[#2e3147] text-[#8892a4] hover:border-[#4a5270]'
-                    }`}
-                  >
-                    {TRANS_LABELS[t]}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* CTA */}
           <button
-            onClick={generate}
-            disabled={!mileage || parseInt(mileage, 10) <= 0 || (needsFuel && !fuelType)}
+            onClick={lookupPlate}
+            disabled={plate.replace(/\D/g, '').length < 7}
             className="w-full flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 disabled:cursor-not-allowed text-white font-black text-sm py-3.5 rounded-xl transition-colors"
           >
-            <Wrench size={14} />
-            צור הצעת מחיר לטיפול תקופתי
+            <Search size={14} />
+            זהה רכב לפי לוחית
           </button>
-
-          {needsFuel && !fuelType && (
-            <p className="text-center text-xs text-amber-500/80">
-              בחר סוג דלק כדי להמשיך
-            </p>
-          )}
         </div>
       )}
 
       {/* ════════════════════════════════════════════════════════════════════════
-          PHASE 2: LOADING
+          PHASE: looking-up
       ════════════════════════════════════════════════════════════════════════ */}
-      {state.phase === 'loading' && (
+      {state.phase === 'looking-up' && (
+        <div className="px-5 py-10 flex flex-col items-center gap-3">
+          <Loader2 size={22} className="text-emerald-400 animate-spin" />
+          <p className="text-sm text-[#8892a4]">מחפש ברשומות הרכב...</p>
+          <p className="text-xs text-[#2e3147] font-mono">{formatPlate(plate)}</p>
+        </div>
+      )}
+
+      {/* ════════════════════════════════════════════════════════════════════════
+          PHASE: mileage  — detected vehicle card + mileage input
+      ════════════════════════════════════════════════════════════════════════ */}
+      {state.phase === 'mileage' && (() => {
+        const vehicle   = state.vehicle
+        const needsFuel = !vehicle.fuelType
+
+        return (
+          <div className="px-5 py-5 space-y-5">
+
+            {/* Detected vehicle */}
+            <VehicleCard vehicle={vehicle} onChangePlate={goToPlate} />
+
+            {/* Mileage */}
+            <div className="space-y-1.5">
+              <label className="flex items-center gap-1.5 text-xs font-bold text-[#8892a4] uppercase tracking-widest">
+                <Gauge size={11} />
+                ק״מ נוכחי
+              </label>
+              <div className="relative">
+                <input
+                  type="number"
+                  min={0}
+                  step={1000}
+                  value={mileage}
+                  onChange={e => setMileage(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && !needsFuel && generate()}
+                  placeholder="לדוגמה: 60000"
+                  className="w-full bg-[#1a1d27] border border-[#2e3147] text-[#e2e8f0] rounded-xl px-4 py-3 text-sm font-mono outline-none focus:border-emerald-500/60 focus:ring-2 focus:ring-emerald-500/15 transition-all placeholder:text-[#2e3147]"
+                />
+                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-xs text-[#4a5270]">ק״מ</span>
+              </div>
+            </div>
+
+            {/* Fuel override — only when lookup returned no fuelType */}
+            {needsFuel && (
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-amber-400 uppercase tracking-widest flex items-center gap-1.5">
+                  <AlertTriangle size={11} />
+                  סוג דלק — לא זוהה אוטומטית
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  {(['GASOLINE', 'DIESEL', 'HYBRID', 'ELECTRIC'] as const).map(f => (
+                    <button
+                      key={f}
+                      type="button"
+                      onClick={() => setFuelOverride(f)}
+                      className={`py-2.5 rounded-xl text-sm font-bold border transition-all ${
+                        fuelOverride === f
+                          ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-300'
+                          : 'bg-[#1a1d27] border-[#2e3147] text-[#8892a4] hover:border-[#4a5270]'
+                      }`}
+                    >
+                      {FUEL_LABELS[f]}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Transmission — optional, helps improve schedule matching */}
+            {!vehicle.transmission && (
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-[#4a5270] uppercase tracking-widest flex items-center gap-1.5">
+                  <Info size={11} />
+                  תיבת הילוכים (אופציונלי — משפר התאמה)
+                </label>
+                <div className="grid grid-cols-3 gap-2">
+                  {(['AUTOMATIC', 'MANUAL', 'CVT'] as const).map(t => (
+                    <button
+                      key={t}
+                      type="button"
+                      onClick={() => setTransmission(prev => prev === t ? '' : t)}
+                      className={`py-2.5 rounded-xl text-sm font-bold border transition-all ${
+                        transmission === t
+                          ? 'bg-indigo-500/20 border-indigo-500/50 text-indigo-300'
+                          : 'bg-[#1a1d27] border-[#2e3147] text-[#8892a4] hover:border-[#4a5270]'
+                      }`}
+                    >
+                      {TRANS_LABELS[t]}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* CTA */}
+            <button
+              onClick={generate}
+              disabled={!mileage || parseInt(mileage, 10) <= 0 || (needsFuel && !fuelOverride)}
+              className="w-full flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 disabled:cursor-not-allowed text-white font-black text-sm py-3.5 rounded-xl transition-colors"
+            >
+              <Wrench size={14} />
+              צור הצעת מחיר לטיפול תקופתי
+            </button>
+
+            {needsFuel && !fuelOverride && (
+              <p className="text-center text-xs text-amber-500/80">בחר סוג דלק כדי להמשיך</p>
+            )}
+          </div>
+        )
+      })()}
+
+      {/* ════════════════════════════════════════════════════════════════════════
+          PHASE: generating
+      ════════════════════════════════════════════════════════════════════════ */}
+      {state.phase === 'generating' && (
         <div className="px-5 py-10 flex flex-col items-center gap-3">
           <Loader2 size={22} className="text-emerald-400 animate-spin" />
           <p className="text-sm text-[#8892a4]">מאתר לוח טיפולים מתאים לרכב...</p>
@@ -401,7 +626,7 @@ export function PeriodicServicePanel({
       )}
 
       {/* ════════════════════════════════════════════════════════════════════════
-          PHASE 3: ERROR
+          PHASE: error
       ════════════════════════════════════════════════════════════════════════ */}
       {state.phase === 'error' && (
         <div className="px-5 py-5 space-y-4">
@@ -410,7 +635,13 @@ export function PeriodicServicePanel({
             <p className="text-sm text-red-300">{state.message}</p>
           </div>
           <button
-            onClick={reset}
+            onClick={() => {
+              if (state.prevVehicle) {
+                setState({ phase: 'mileage', vehicle: state.prevVehicle })
+              } else {
+                setState({ phase: 'plate' })
+              }
+            }}
             className="w-full text-sm text-[#4a5270] hover:text-[#8892a4] transition-colors py-2"
           >
             ← חזרה
@@ -419,14 +650,13 @@ export function PeriodicServicePanel({
       )}
 
       {/* ════════════════════════════════════════════════════════════════════════
-          PHASE 4: RESULT — THREE-SECTION SERVICE ADVISOR LAYOUT
+          PHASE: result — three-section service advisor layout
       ════════════════════════════════════════════════════════════════════════ */}
       {state.phase === 'result' && (() => {
         const { schedule, usedFuelType, usedTransmission } = state.data
         const km     = parseInt(mileage, 10)
         const groups = groupByPriority(schedule.items)
 
-        // Compute additional cost for selected optional items
         const selRecItems  = groups.recommended.filter((_, idx) => selectedRec.has(idx))
         const selSafeItems = groups.safety.filter((_, idx) => selectedSafe.has(idx))
         const allSelected  = [...selRecItems, ...selSafeItems]
@@ -436,15 +666,14 @@ export function PeriodicServicePanel({
         const additionalSubtotal  = r2(additionalParts + additionalLaborCost)
         const additionalVat       = r2(additionalSubtotal * VAT_RATE)
         const additionalTotal     = r2(additionalSubtotal + additionalVat)
-
-        const grandSubtotal = r2(schedule.subtotal + additionalSubtotal)
-        const grandVat      = r2(grandSubtotal * VAT_RATE)
-        const grandTotal    = r2(grandSubtotal + grandVat)
+        const grandSubtotal       = r2(schedule.subtotal + additionalSubtotal)
+        const grandVat            = r2(grandSubtotal * VAT_RATE)
+        const grandTotal          = r2(grandSubtotal + grandVat)
 
         return (
           <div className="px-5 pt-4 pb-5 space-y-5">
 
-            {/* ── Service badge ──────────────────────────────────────────── */}
+            {/* Service badge */}
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2.5">
                 <span className="text-2xl">🔧</span>
@@ -472,9 +701,7 @@ export function PeriodicServicePanel({
               </div>
             )}
 
-            {/* ══════════════════════════════════════════════════════════════
-                SECTION 1 — REQUIRED (manufacturer mandated)
-            ══════════════════════════════════════════════════════════════ */}
+            {/* ── REQUIRED ───────────────────────────────────────────────────── */}
             <div>
               <div className="flex items-center justify-between mb-2.5">
                 <p className="text-[10px] font-bold text-emerald-400 uppercase tracking-[0.12em] flex items-center gap-1.5">
@@ -485,7 +712,6 @@ export function PeriodicServicePanel({
                   בסיס: {formatCurrency(schedule.total)}
                 </span>
               </div>
-
               <div className="space-y-1.5">
                 {groups.required.map((item, idx) => (
                   <RequiredItemRow
@@ -499,9 +725,7 @@ export function PeriodicServicePanel({
               </div>
             </div>
 
-            {/* ══════════════════════════════════════════════════════════════
-                SECTION 2 — RECOMMENDED (advisor upsell)
-            ══════════════════════════════════════════════════════════════ */}
+            {/* ── RECOMMENDED ────────────────────────────────────────────────── */}
             {groups.recommended.length > 0 && (
               <div>
                 <div className="flex items-center justify-between mb-2.5">
@@ -511,33 +735,27 @@ export function PeriodicServicePanel({
                   {selectedRec.size > 0 && (
                     <span className="flex items-center gap-1 text-[10px] font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full">
                       <TrendingUp size={9} />
-                      +{formatCurrency(r2([...selRecItems].reduce((s, i) => s + itemCost(i) * (1 + VAT_RATE), 0)))}
+                      +{formatCurrency(r2(selRecItems.reduce((s, i) => s + itemCost(i) * (1 + VAT_RATE), 0)))}
                     </span>
                   )}
                 </div>
-
                 <div className="space-y-1.5">
-                  {groups.recommended.map((item, idx) => {
-                    const isSelected = selectedRec.has(idx)
-                    return (
-                      <RecommendedItemRow
-                        key={idx}
-                        item={item}
-                        selected={isSelected}
-                        noteKey={`rec-${idx}`}
-                        expanded={!!expandedNotes[`rec-${idx}`]}
-                        onToggle={() => toggleRec(idx)}
-                        onToggleNote={() => toggleNote(`rec-${idx}`)}
-                      />
-                    )
-                  })}
+                  {groups.recommended.map((item, idx) => (
+                    <RecommendedItemRow
+                      key={idx}
+                      item={item}
+                      selected={selectedRec.has(idx)}
+                      noteKey={`rec-${idx}`}
+                      expanded={!!expandedNotes[`rec-${idx}`]}
+                      onToggle={() => toggleRec(idx)}
+                      onToggleNote={() => toggleNote(`rec-${idx}`)}
+                    />
+                  ))}
                 </div>
               </div>
             )}
 
-            {/* ══════════════════════════════════════════════════════════════
-                SECTION 3 — SAFETY (red-badge items)
-            ══════════════════════════════════════════════════════════════ */}
+            {/* ── SAFETY ─────────────────────────────────────────────────────── */}
             {groups.safety.length > 0 && (
               <div>
                 <div className="flex items-center justify-between mb-2.5">
@@ -548,38 +766,31 @@ export function PeriodicServicePanel({
                   {selectedSafe.size > 0 && (
                     <span className="flex items-center gap-1 text-[10px] font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full">
                       <TrendingUp size={9} />
-                      +{formatCurrency(r2([...selSafeItems].reduce((s, i) => s + itemCost(i) * (1 + VAT_RATE), 0)))}
+                      +{formatCurrency(r2(selSafeItems.reduce((s, i) => s + itemCost(i) * (1 + VAT_RATE), 0)))}
                     </span>
                   )}
                 </div>
-
                 <div className="space-y-1.5">
-                  {groups.safety.map((item, idx) => {
-                    const isSelected = selectedSafe.has(idx)
-                    return (
-                      <SafetyItemRow
-                        key={idx}
-                        item={item}
-                        selected={isSelected}
-                        noteKey={`safe-${idx}`}
-                        expanded={!!expandedNotes[`safe-${idx}`]}
-                        onToggle={() => toggleSafe(idx)}
-                        onToggleNote={() => toggleNote(`safe-${idx}`)}
-                      />
-                    )
-                  })}
+                  {groups.safety.map((item, idx) => (
+                    <SafetyItemRow
+                      key={idx}
+                      item={item}
+                      selected={selectedSafe.has(idx)}
+                      noteKey={`safe-${idx}`}
+                      expanded={!!expandedNotes[`safe-${idx}`]}
+                      onToggle={() => toggleSafe(idx)}
+                      onToggleNote={() => toggleNote(`safe-${idx}`)}
+                    />
+                  ))}
                 </div>
               </div>
             )}
 
-            {/* ══════════════════════════════════════════════════════════════
-                FINANCIAL SUMMARY
-            ══════════════════════════════════════════════════════════════ */}
+            {/* ── Financial summary ───────────────────────────────────────────── */}
             <div className="bg-[#1a1d27] border border-[#252836] rounded-xl px-4 py-3 space-y-1.5">
               <p className="text-[10px] font-bold text-[#4a5270] uppercase tracking-[0.12em] mb-2">
                 סיכום עלויות
               </p>
-
               <div className="flex justify-between text-xs text-[#8892a4]">
                 <span>עבודה ({schedule.requiredLaborHours} שע׳ × ₪{LABOR_RATE_ILS})</span>
                 <span className="font-mono">{formatCurrency(schedule.laborTotal)}</span>
@@ -588,7 +799,6 @@ export function PeriodicServicePanel({
                 <span>חלקים (נדרשים)</span>
                 <span className="font-mono">{formatCurrency(schedule.partsTotal)}</span>
               </div>
-
               {additionalSubtotal > 0 && (
                 <>
                   <div className="border-t border-[#252836] mt-1.5 pt-1.5" />
@@ -601,7 +811,6 @@ export function PeriodicServicePanel({
                   </div>
                 </>
               )}
-
               <div className="flex justify-between text-xs text-[#8892a4] border-t border-[#252836] pt-1.5 mt-1.5">
                 <span>לפני מע״מ</span>
                 <span className="font-mono">{formatCurrency(grandSubtotal)}</span>
@@ -614,7 +823,6 @@ export function PeriodicServicePanel({
                 <span>סה״כ כולל מע״מ</span>
                 <span className="font-mono">{formatCurrency(grandTotal)}</span>
               </div>
-
               {additionalTotal > 0 && (
                 <div className="flex justify-between text-[10px] text-emerald-500/70 pt-0.5">
                   <span>מתוכם הכנסה נוספת</span>
@@ -623,7 +831,6 @@ export function PeriodicServicePanel({
               )}
             </div>
 
-            {/* ── Schedule notes ─────────────────────────────────────────── */}
             {schedule.scheduleNotes && (
               <div className="bg-[#1a1d27] border border-[#252836] rounded-xl px-4 py-3">
                 <p className="text-[10px] font-bold text-[#4a5270] uppercase tracking-[0.12em] mb-1.5">
@@ -633,7 +840,6 @@ export function PeriodicServicePanel({
               </div>
             )}
 
-            {/* ── Disclaimer ─────────────────────────────────────────────── */}
             <div className="bg-amber-500/8 border border-amber-500/25 rounded-xl px-4 py-3 flex items-start gap-2.5">
               <AlertTriangle size={14} className="text-amber-400 shrink-0 mt-0.5" />
               <p className="text-xs text-amber-300/90 leading-relaxed">
@@ -642,7 +848,6 @@ export function PeriodicServicePanel({
               </p>
             </div>
 
-            {/* ── CTA ────────────────────────────────────────────────────── */}
             {canEdit && (
               <div className="pt-1">
                 {!confirmed ? (
@@ -680,21 +885,19 @@ export function PeriodicServicePanel({
   )
 }
 
-// ─── Section-specific item row components ─────────────────────────────────────
+// ─── Item row sub-components ──────────────────────────────────────────────────
 
-/** Required item — always selected, green checkmark */
 function RequiredItemRow({
-  item, noteKey, expanded, onToggleNote,
+  item, noteKey: _noteKey, expanded, onToggleNote,
 }: {
   item: ServiceItem; noteKey: string; expanded: boolean; onToggleNote: () => void
 }) {
-  const icon  = CATEGORY_ICONS[item.category]  ?? '🔧'
+  const icon         = CATEGORY_ICONS[item.category] ?? '🔧'
   const isInspection = item.category === 'INSPECTION'
 
   return (
     <div className="bg-[#1a1d27] border border-[#252836] rounded-xl">
       <div className="flex items-center gap-3 px-3 py-2.5">
-        {/* Check indicator */}
         <CheckCircle2 size={14} className="text-emerald-500 shrink-0" />
         <span className="text-base shrink-0 w-5 text-center">{icon}</span>
         <div className="flex-1 min-w-0">
@@ -730,21 +933,18 @@ function RequiredItemRow({
   )
 }
 
-/** Recommended item — toggleable with + / ✓ button */
 function RecommendedItemRow({
-  item, selected, noteKey, expanded, onToggle, onToggleNote,
+  item, selected, noteKey: _noteKey, expanded, onToggle, onToggleNote,
 }: {
   item: ServiceItem; selected: boolean; noteKey: string
   expanded: boolean; onToggle: () => void; onToggleNote: () => void
 }) {
-  const icon  = CATEGORY_ICONS[item.category] ?? '🔧'
-  const cost  = r2(item.unitPrice * item.quantity + item.laborHours * LABOR_RATE_ILS)
+  const icon = CATEGORY_ICONS[item.category] ?? '🔧'
+  const cost = r2(item.unitPrice * item.quantity + item.laborHours * LABOR_RATE_ILS)
 
   return (
     <div className={`rounded-xl border transition-all ${
-      selected
-        ? 'bg-blue-500/8 border-blue-500/30'
-        : 'bg-[#141720] border-[#252836]'
+      selected ? 'bg-blue-500/8 border-blue-500/30' : 'bg-[#141720] border-[#252836]'
     }`}>
       <div className="flex items-center gap-3 px-3 py-2.5">
         <span className="text-base shrink-0 w-5 text-center">{icon}</span>
@@ -792,9 +992,8 @@ function RecommendedItemRow({
   )
 }
 
-/** Safety item — red warning badge, click to add */
 function SafetyItemRow({
-  item, selected, noteKey, expanded, onToggle, onToggleNote,
+  item, selected, noteKey: _noteKey, expanded, onToggle, onToggleNote,
 }: {
   item: ServiceItem; selected: boolean; noteKey: string
   expanded: boolean; onToggle: () => void; onToggleNote: () => void
@@ -804,9 +1003,7 @@ function SafetyItemRow({
 
   return (
     <div className={`rounded-xl border transition-all ${
-      selected
-        ? 'bg-red-500/10 border-red-500/35'
-        : 'bg-[#1a1017] border-red-500/15'
+      selected ? 'bg-red-500/10 border-red-500/35' : 'bg-[#1a1017] border-red-500/15'
     }`}>
       <div className="flex items-center gap-3 px-3 py-2.5">
         <AlertTriangle size={14} className="text-red-400 shrink-0" />

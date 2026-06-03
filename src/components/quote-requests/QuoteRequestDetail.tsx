@@ -282,16 +282,8 @@ export function QuoteRequestDetail({ data }: { data: QuoteDetailData }) {
       ════════════════════════════════════════════════════════════ */}
       {data.serviceType === 'PERIODIC_SERVICE' && (
         <PeriodicServicePanel
-          vehicle={{
-            plate:        data.vehicle.plate,
-            make:         data.vehicle.make,
-            model:        data.vehicle.model,
-            year:         data.vehicle.year,
-            engine:       data.vehicle.engine       ?? null,
-            fuelType:     data.vehicle.fuelType     ?? null,
-            transmission: data.vehicle.transmission ?? null,
-            mileage:      data.vehicle.mileage      ?? null,
-          }}
+          initialPlate={data.vehicle.plate}
+          initialMileage={data.vehicle.mileage ?? undefined}
           workOrderId={data.workOrder.id}
           canEdit={canEdit}
           onConfirm={fillFromPeriodic}

@@ -1,26 +1,16 @@
 /**
  * POST /api/periodic-quote
  *
- * Accepts plate + mileage (+ optional vehicle fields) and returns a
- * structured maintenance quote driven by the MaintenanceSchedule DB.
+ * Plate-first periodic service quote.
  *
- * Flow:
- *  1. Validate auth
- *  2. Try to enrich vehicle data from the VehicleLookupCache (if plate given)
- *  3. Resolve the best matching schedule from the DB
- *  4. Return schedule items + totals
+ * Minimal body:  { vehiclePlate, vehicleMileage }
+ * Full body:     { vehiclePlate, vehicleMileage, vehicleMake, vehicleModel,
+ *                  vehicleYear, vehicleFuelType, vehicleTransmission }
+ *
+ * When vehicleMake/vehicleModel/vehicleYear are omitted the server does a
+ * plate lookup (cache-first, then gov.il API) and fills them in.
  *
  * No AI is involved. The response is 100% rule-based.
- *
- * Body: {
- *   vehiclePlate?:       string
- *   vehicleMake:         string
- *   vehicleModel:        string
- *   vehicleYear:         number
- *   vehicleMileage:      number
- *   vehicleFuelType?:    string    // GASOLINE | DIESEL | HYBRID | ELECTRIC | LPG
- *   vehicleTransmission?: string  // MANUAL | AUTOMATIC | CVT
- * }
  */
 
 import { NextRequest, NextResponse } from 'next/server'
@@ -38,42 +28,55 @@ export async function POST(req: NextRequest) {
 
   // ── Parse body ──────────────────────────────────────────────────────────────
   const body = await req.json() as {
-    vehiclePlate?:        string
-    vehicleMake:          string
-    vehicleModel:         string
-    vehicleYear:          number
-    vehicleMileage:       number
+    vehiclePlate:         string            // required
+    vehicleMileage:       number            // required
+    vehicleMake?:         string            // optional — provided by client after lookup
+    vehicleModel?:        string            // optional
+    vehicleYear?:         number            // optional
     vehicleFuelType?:     string
     vehicleTransmission?: string
   }
 
-  const { vehicleMake, vehicleModel, vehicleYear, vehicleMileage } = body
-
-  if (!vehicleMake || !vehicleModel || !vehicleYear || vehicleMileage == null) {
-    return NextResponse.json(
-      { error: 'vehicleMake, vehicleModel, vehicleYear, vehicleMileage are required' },
-      { status: 400 },
-    )
+  if (!body.vehiclePlate?.trim()) {
+    return NextResponse.json({ error: 'vehiclePlate is required' }, { status: 400 })
+  }
+  if (body.vehicleMileage == null || isNaN(Number(body.vehicleMileage))) {
+    return NextResponse.json({ error: 'vehicleMileage is required' }, { status: 400 })
   }
 
-  // ── Optional: enrich from gov.il plate cache ─────────────────────────────────
-  let fuelType    = body.vehicleFuelType    ?? null
+  // ── Resolve vehicle fields ───────────────────────────────────────────────────
+  // Client provides these when it has already done a plate lookup (typical path).
+  // If any are missing, do the lookup server-side (direct API calls, future use).
+  let make         = body.vehicleMake  ?? null
+  let model        = body.vehicleModel ?? null
+  let year         = body.vehicleYear  ?? null
+  let fuelType     = body.vehicleFuelType    ?? null
   let transmission = body.vehicleTransmission ?? null
 
-  if (body.vehiclePlate && (!fuelType || !transmission)) {
-    const cached = await lookupVehicle(body.vehiclePlate).catch(() => null)
-    if (cached) {
-      if (!fuelType && cached.fuelType)      fuelType    = cached.fuelType
-      // gov.il does not expose transmission — keep as-is
+  if (!make || !model || !year) {
+    const looked = await lookupVehicle(body.vehiclePlate).catch(() => null)
+    if (looked) {
+      make  = make  || looked.make
+      model = model || looked.model
+      year  = year  || looked.year
+      fuelType     = fuelType     || (looked.fuelType     ?? null)
+      transmission = transmission || (looked.transmission ?? null)
     }
+  }
+
+  if (!make || !model || !year) {
+    return NextResponse.json(
+      { error: 'VEHICLE_NOT_FOUND', message: 'לא ניתן לזהות את הרכב — בדוק את הלוחית' },
+      { status: 404 },
+    )
   }
 
   // ── Resolve schedule ────────────────────────────────────────────────────────
   const schedule: ScheduleResult | null = await resolveSchedule({
-    make:         vehicleMake,
-    model:        vehicleModel,
-    year:         vehicleYear,
-    mileage:      vehicleMileage,
+    make,
+    model,
+    year,
+    mileage:      Number(body.vehicleMileage),
     fuelType,
     transmission,
   })
@@ -92,8 +95,8 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json({
     schedule,
-    usedFuelType:    fuelType,
+    usedFuelType:     fuelType,
     usedTransmission: transmission,
-    missingFields,   // client can prompt user for these next time
+    missingFields,
   })
 }

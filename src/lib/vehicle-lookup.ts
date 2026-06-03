@@ -10,17 +10,26 @@ import { FuelType } from '@prisma/client'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
+/**
+ * Provider contract — any lookup backend must return this shape.
+ * gov.il is the default provider; swap `fetchFromGovApi` below
+ * (or replace `lookupVehicle`) to connect a richer data source.
+ */
 export type VehicleLookupResult = {
-  plate:        string        // normalized digits only
-  make:         string        // e.g. "TOYOTA"
-  makeHe:       string        // Hebrew manufacturer name
-  model:        string        // e.g. "COROLLA"
-  trim?:        string        // commercial name / trim
-  year:         number        // manufacture year
-  fuelType?:    FuelType
-  engineVolume?: number       // cc
-  color?:       string        // Hebrew color name
+  plate:          string        // normalized digits only
+  make:           string        // e.g. "TOYOTA"  (English uppercase, matches MaintenanceSchedule)
+  makeHe:         string        // Hebrew display name, e.g. "טויוטה"
+  model:          string        // e.g. "COROLLA"
+  trim?:          string        // commercial trim / engine label, e.g. "1.5 TSI"
+  year:           number        // manufacture year
+  fuelType?:      FuelType
+  engineVolume?:  number        // cc
+  transmission?:  string        // "MANUAL" | "AUTOMATIC" | "CVT" — gov.il omits this; richer providers supply it
+  color?:         string        // Hebrew color name
 }
+
+/** Swap this type to connect a different lookup provider */
+export type VehicleLookupProvider = (plate: string) => Promise<VehicleLookupResult | null>
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
