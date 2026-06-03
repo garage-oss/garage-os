@@ -36,14 +36,15 @@ import {
 /** Shape returned by /api/vehicle-lookup — mirrors VehicleLookupResult */
 interface LookedUpVehicle {
   plate:          string
-  make:           string        // "TOYOTA", "KIA" — English, used for schedule matching
-  makeHe:         string        // same in gov.il; richer providers may differ
-  model:          string        // "COROLLA", "SPORTAGE"
-  trim?:          string        // "1.5 TSI", "LUXURY", etc.
+  make:           string        // "SKODA" — English uppercase, used for schedule matching
+  makeHe:         string        // "סקודה"
+  model:          string        // "OCTAVIA"
+  trim?:          string        // "1.5 TSI", "2.0 GDI"
   year:           number
   fuelType?:      string | null
   engineVolume?:  number | null
-  transmission?:  string | null // gov.il omits this; future providers supply it
+  transmission?:  string | null // canonical: "AUTOMATIC"|"MANUAL"|"CVT" — for schedule matching
+  gearbox?:       string | null // display: "DSG7", "DCT6", "E-CVT" — shown on vehicle card
   color?:         string | null
 }
 
@@ -151,6 +152,10 @@ function engineLabel(v: LookedUpVehicle): string {
   return ''
 }
 
+function gearboxLabel(v: LookedUpVehicle): string {
+  return v.gearbox ?? (v.transmission ? (TRANS_LABELS[v.transmission] ?? v.transmission) : '') ?? ''
+}
+
 function formatPlate(raw: string): string {
   const d = raw.replace(/\D/g, '')
   if (d.length === 7) return `${d.slice(0, 2)}-${d.slice(2, 5)}-${d.slice(5)}`
@@ -171,7 +176,7 @@ function VehicleCard({
 }) {
   const eng  = engineLabel(vehicle)
   const fuel = vehicle.fuelType ? (FUEL_LABELS[vehicle.fuelType] ?? vehicle.fuelType) : null
-  const trans = vehicle.transmission ? (TRANS_LABELS[vehicle.transmission] ?? vehicle.transmission) : null
+  const gear = gearboxLabel(vehicle) || null
 
   if (compact) {
     return (
@@ -185,7 +190,7 @@ function VehicleCard({
             <div className="flex items-center gap-1.5 mt-0.5">
               {eng  && <span className="text-[10px] text-[#4a5270]">{eng}</span>}
               {fuel && <span className="text-[10px] text-[#4a5270]">· {fuel}</span>}
-              {trans && <span className="text-[10px] text-[#4a5270]">· {trans}</span>}
+              {gear && <span className="text-[10px] text-[#4a5270]">· {gear}</span>}
               <span className="text-[10px] text-[#2e3147] font-mono">· {formatPlate(vehicle.plate)}</span>
             </div>
           </div>
@@ -216,9 +221,9 @@ function VehicleCard({
                 {eng}
               </span>
             )}
-            {trans && (
+            {gear && (
               <span className="text-xs font-bold text-indigo-400 border border-indigo-500/20 bg-indigo-500/8 px-2 py-0.5 rounded-md">
-                {trans}
+                {gear}
               </span>
             )}
             {fuel && (
@@ -259,7 +264,6 @@ export function PeriodicServicePanel({
   const [plate,        setPlate]        = useState(initialPlate ? formatPlate(initialPlate) : '')
   const [mileage,      setMileage]      = useState(initialMileage ? String(initialMileage) : '')
   const [fuelOverride, setFuelOverride] = useState('')   // only when lookup returns no fuelType
-  const [transmission, setTransmission] = useState('')   // user-selected; supplements lookup data
 
   // ── Phase machine ───────────────────────────────────────────────────────────
   const [state,         setState]        = useState<PanelPhase>({ phase: 'plate' })
@@ -338,7 +342,7 @@ export function PeriodicServicePanel({
           vehicleYear:         vehicle.year,
           vehicleMileage:      km,
           vehicleFuelType:     resolvedFuel   || undefined,
-          vehicleTransmission: vehicle.transmission || transmission || undefined,
+          vehicleTransmission: vehicle.transmission || undefined,
         }),
       })
       const json = await res.json()
@@ -435,7 +439,6 @@ export function PeriodicServicePanel({
     setSelectedSafe(new Set())
     setExpandedNotes({})
     setMileage(initialMileage ? String(initialMileage) : '')
-    setTransmission('')
     setFuelOverride('')
   }
 
@@ -588,32 +591,6 @@ export function PeriodicServicePanel({
                       }`}
                     >
                       {FUEL_LABELS[f]}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Transmission — optional, helps improve schedule matching */}
-            {!vehicle.transmission && (
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-[#4a5270] uppercase tracking-widest flex items-center gap-1.5">
-                  <Info size={11} />
-                  תיבת הילוכים (אופציונלי — משפר התאמה)
-                </label>
-                <div className="grid grid-cols-3 gap-2">
-                  {(['AUTOMATIC', 'MANUAL', 'CVT'] as const).map(t => (
-                    <button
-                      key={t}
-                      type="button"
-                      onClick={() => setTransmission(prev => prev === t ? '' : t)}
-                      className={`py-2.5 rounded-xl text-sm font-bold border transition-all ${
-                        transmission === t
-                          ? 'bg-indigo-500/20 border-indigo-500/50 text-indigo-300'
-                          : 'bg-[#1a1d27] border-[#2e3147] text-[#8892a4] hover:border-[#4a5270]'
-                      }`}
-                    >
-                      {TRANS_LABELS[t]}
                     </button>
                   ))}
                 </div>
