@@ -10,6 +10,7 @@ import type {
   QuoteRequestServiceType,
   QuoteRequestUrgency,
 } from '@prisma/client'
+import type { PeriodicPortalData } from '@/lib/periodic-portal'
 
 // ─── Portal: customer submits a quote request ─────────────────────────────────
 
@@ -121,11 +122,12 @@ export interface QuoteItemEdit {
 export async function sendQuoteToCustomer(
   quoteRequestId: string,
   opts: {
-    laborHours: number
-    laborRate:  number
-    notes:      string
-    validDays:  number
-    items:      QuoteItemEdit[]
+    laborHours:   number
+    laborRate:    number
+    notes:        string
+    validDays:    number
+    items:        QuoteItemEdit[]
+    periodicData?: PeriodicPortalData
   },
 ) {
   const { orgId, userId, userEmail, userName } = await requireOrg()
@@ -163,13 +165,14 @@ export async function sendQuoteToCustomer(
     await tx.quote.update({
       where: { id: quote.id },
       data: {
-        status:     'SENT',
-        laborHours: opts.laborHours,
-        laborRate:  opts.laborRate,
+        status:       'SENT',
+        laborHours:   opts.laborHours,
+        laborRate:    opts.laborRate,
         partsTotal,
         totalPrice,
-        notes:      opts.notes,
+        notes:        opts.notes,
         validUntil,
+        periodicData: opts.periodicData ? (opts.periodicData as object) : undefined,
         items: {
           create: opts.items.map(i => ({
             description: i.description,

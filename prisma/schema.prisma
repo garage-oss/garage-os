@@ -483,6 +483,7 @@ model Quote {
   workOrderId    String?      @unique
   workOrder      WorkOrder?   @relation(fields: [workOrderId], references: [id])
   isEstimate     Boolean      @default(false)
+  periodicData   Json?
   items          QuoteItem[]
   media          MediaFile[]
   aiAnalysis     AiQuoteAnalysis?

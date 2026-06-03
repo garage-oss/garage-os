@@ -24,6 +24,7 @@ import {
 } from '@/lib/maintenance-schedule'
 import type { ScheduleResult, ServiceItem } from '@/lib/maintenance-schedule'
 import type { QuoteItemEdit }               from '@/app/actions/quote-request'
+import type { PeriodicPortalData }          from '@/lib/periodic-portal'
 import {
   Wrench, Gauge, CheckCircle2, AlertTriangle,
   ChevronDown, ChevronUp, Loader2, Info,
@@ -58,7 +59,7 @@ export interface PeriodicServicePanelProps {
   initialMileage?: number    // pre-filled from work order vehicle record
   workOrderId:     string
   canEdit:         boolean
-  onConfirm:       (items: QuoteItemEdit[], notes: string, laborHours: number) => void
+  onConfirm:       (items: QuoteItemEdit[], notes: string, laborHours: number, periodicData: PeriodicPortalData) => void
 }
 
 type PanelPhase =
@@ -391,7 +392,28 @@ export function PeriodicServicePanel({
     noteLines.push('', '⚠️ הצעה אוטומטית לפי נתוני רכב וק״מ — כפוף לאימות לפי קוד מנוע והוראות יצרן.')
     if (schedule.scheduleNotes) noteLines.push('', `הערות: ${schedule.scheduleNotes}`)
 
-    onConfirm(items, noteLines.join('\n'), totalLaborHours)
+    const periodicData: PeriodicPortalData = {
+      vehicleName:        vehicleName,
+      mileage:            km,
+      intervalLabel:      schedule.intervalLabel,
+      laborRate:          LABOR_RATE_ILS,
+      required:           groups.required.map(i => ({
+        nameHe: i.nameHe, unitPrice: i.unitPrice, quantity: i.quantity,
+        laborHours: i.laborHours, category: i.category, notes: i.notes,
+      })),
+      recommended:        groups.recommended.map(i => ({
+        nameHe: i.nameHe, unitPrice: i.unitPrice, quantity: i.quantity,
+        laborHours: i.laborHours, category: i.category, notes: i.notes,
+      })),
+      safety:             groups.safety.map(i => ({
+        nameHe: i.nameHe, unitPrice: i.unitPrice, quantity: i.quantity,
+        laborHours: i.laborHours, category: i.category, notes: i.notes,
+      })),
+      initialRecommended: Array.from(selectedRec),
+      initialSafety:      Array.from(selectedSafe),
+    }
+
+    onConfirm(items, noteLines.join('\n'), totalLaborHours, periodicData)
     setConfirmed(true)
   }
 

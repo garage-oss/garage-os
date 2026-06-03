@@ -17,6 +17,7 @@ import {
 } from 'lucide-react'
 import { PartsRecommendationPanel }  from './PartsRecommendationPanel'
 import { PeriodicServicePanel }      from './PeriodicServicePanel'
+import type { PeriodicPortalData }   from '@/lib/periodic-portal'
 
 // ─── AI types ─────────────────────────────────────────────────────────────────
 
@@ -126,7 +127,8 @@ export function QuoteRequestDetail({ data }: { data: QuoteDetailData }) {
   // 'ai'       → form was populated from AI analysis / supplier panel
   // 'schedule' → form was populated from structured maintenance schedule (periodic only)
   // null       → form has not been auto-populated yet
-  const [filledSource, setFilledSource] = useState<null | 'ai' | 'schedule'>(null)
+  const [filledSource,      setFilledSource]      = useState<null | 'ai' | 'schedule'>(null)
+  const [periodicPortalData, setPeriodicPortalData] = useState<PeriodicPortalData | null>(null)
 
   // ── Totals ──────────────────────────────────────────────────────────────────
   const VAT_RATE   = 0.17
@@ -216,12 +218,13 @@ export function QuoteRequestDetail({ data }: { data: QuoteDetailData }) {
 
   // ── Fill form from periodic service schedule ────────────────────────────────
   // Source is the MaintenanceSchedule DB — no AI involved.
-  function fillFromPeriodic(items: QuoteItemEdit[], scheduleNotes: string, schedLaborHours: number) {
+  function fillFromPeriodic(items: QuoteItemEdit[], scheduleNotes: string, schedLaborHours: number, periodicData: PeriodicPortalData) {
     setItems(items)
     setLaborHours(schedLaborHours)
     setLaborRate(295)
     setNotes(scheduleNotes)
     setFilledSource('schedule')   // ← explicitly NOT 'ai'
+    setPeriodicPortalData(periodicData)
   }
 
   // ── Fill form from selected supplier parts (called by PartsRecommendationPanel) ──
@@ -248,6 +251,7 @@ export function QuoteRequestDetail({ data }: { data: QuoteDetailData }) {
     start(async () => {
       const res = await sendQuoteToCustomer(data.requestId, {
         laborHours, laborRate, notes, validDays, items,
+        periodicData: periodicPortalData ?? undefined,
       })
       if ('error' in res) { setError(String(res)); return }
       setSuccess(true)
