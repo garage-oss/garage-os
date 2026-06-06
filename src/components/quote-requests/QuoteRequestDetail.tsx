@@ -14,9 +14,10 @@ import {
   ChevronDown, ChevronUp,
   AlertTriangle, Zap, Clock,
   Package, Activity, CheckCircle2,
+  Wrench, Gauge,
 } from 'lucide-react'
 import { PartsRecommendationPanel }  from './PartsRecommendationPanel'
-import { PeriodicServicePanel }      from './PeriodicServicePanel'
+import { PeriodicMileageModal }      from './PeriodicMileageModal'
 import type { PeriodicPortalData }   from '@/lib/periodic-portal'
 
 // ─── AI types ─────────────────────────────────────────────────────────────────
@@ -127,8 +128,18 @@ export function QuoteRequestDetail({ data }: { data: QuoteDetailData }) {
   // 'ai'       → form was populated from AI analysis / supplier panel
   // 'schedule' → form was populated from structured maintenance schedule (periodic only)
   // null       → form has not been auto-populated yet
-  const [filledSource,      setFilledSource]      = useState<null | 'ai' | 'schedule'>(null)
+  const [filledSource,       setFilledSource]      = useState<null | 'ai' | 'schedule'>(null)
   const [periodicPortalData, setPeriodicPortalData] = useState<PeriodicPortalData | null>(null)
+  const [periodicIsFallback, setPeriodicIsFallback] = useState(false)
+
+  // ── Periodic service modal ──────────────────────────────────────────────────
+  // Auto-open the mileage modal on first render for PERIODIC_SERVICE requests
+  // that haven't been filled yet and are still editable.
+  const isPeriodic     = data.serviceType === 'PERIODIC_SERVICE'
+  const canEditStatus  = data.status === 'REVIEWING' || data.status === 'PENDING'
+  const [showPeriodicModal, setShowPeriodicModal] = useState(
+    isPeriodic && canEditStatus,
+  )
 
   // ── Totals ──────────────────────────────────────────────────────────────────
   const VAT_RATE   = 0.17
@@ -218,13 +229,21 @@ export function QuoteRequestDetail({ data }: { data: QuoteDetailData }) {
 
   // ── Fill form from periodic service schedule ────────────────────────────────
   // Source is the MaintenanceSchedule DB — no AI involved.
-  function fillFromPeriodic(items: QuoteItemEdit[], scheduleNotes: string, schedLaborHours: number, periodicData: PeriodicPortalData) {
+  function fillFromPeriodic(
+    items:          QuoteItemEdit[],
+    scheduleNotes:  string,
+    schedLaborHours: number,
+    periodicData:   PeriodicPortalData,
+    isFallback:     boolean = false,
+  ) {
     setItems(items)
     setLaborHours(schedLaborHours)
     setLaborRate(295)
     setNotes(scheduleNotes)
     setFilledSource('schedule')   // ← explicitly NOT 'ai'
     setPeriodicPortalData(periodicData)
+    setPeriodicIsFallback(isFallback)
+    setShowPeriodicModal(false)   // close the modal
   }
 
   // ── Fill form from selected supplier parts (called by PartsRecommendationPanel) ──
@@ -281,17 +300,100 @@ export function QuoteRequestDetail({ data }: { data: QuoteDetailData }) {
     <div className="space-y-5">
 
       {/* ════════════════════════════════════════════════════════════
-          PERIODIC SERVICE — structured schedule panel
+          PERIODIC SERVICE — mileage modal + applied banner
           (replaces AI panel for PERIODIC_SERVICE requests)
       ════════════════════════════════════════════════════════════ */}
-      {data.serviceType === 'PERIODIC_SERVICE' && (
-        <PeriodicServicePanel
-          initialPlate={data.vehicle.plate}
-          initialMileage={data.vehicle.mileage ?? undefined}
-          workOrderId={data.workOrder.id}
-          canEdit={canEdit}
-          onConfirm={fillFromPeriodic}
-        />
+      {isPeriodic && (
+        <>
+          {/* Applied banner — shown after the modal confirms */}
+          {filledSource === 'schedule' && periodicPortalData && (
+            <div className={`border rounded-2xl overflow-hidden ${
+              periodicIsFallback
+                ? 'bg-amber-500/8 border-amber-500/25'
+                : 'bg-emerald-500/8 border-emerald-500/25'
+            }`}>
+              <div className="flex items-center justify-between px-5 py-3.5">
+                <div className="flex items-center gap-3">
+                  <span className="text-xl">🔧</span>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-black text-[#e2e8f0]">{periodicPortalData.intervalLabel}</p>
+                      {periodicIsFallback ? (
+                        <span className="text-[10px] font-bold text-amber-400 bg-amber-500/15 border border-amber-500/30 px-2 py-0.5 rounded-full">
+                          הצעת בסיס
+                        </span>
+                      ) : (
+                        <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/15 border border-emerald-500/25 px-2 py-0.5 rounded-full">
+                          הוראות יצרן
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-[#4a5270] mt-0.5">
+                      {periodicPortalData.vehicleName} · {periodicPortalData.mileage.toLocaleString('he-IL')} ק״מ
+                    </p>
+                  </div>
+                </div>
+                {canEdit && (
+                  <button
+                    onClick={() => setShowPeriodicModal(true)}
+                    className="text-xs text-[#4a5270] hover:text-[#8892a4] border border-[#252836] px-3 py-1.5 rounded-lg transition-colors"
+                  >
+                    עדכן ק״מ
+                  </button>
+                )}
+              </div>
+              {periodicIsFallback && (
+                <div className="px-5 pb-3.5 flex items-start gap-2">
+                  <AlertTriangle size={12} className="text-amber-400 shrink-0 mt-0.5" />
+                  <p className="text-[11px] text-amber-300/80 leading-relaxed">
+                    לא נמצאו הוראות יצרן מלאות — נוצרה הצעת בסיס לבדיקה ואישור יועץ שירות.
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Open-modal button — shown before first confirmation */}
+          {filledSource !== 'schedule' && canEdit && (
+            <div className="bg-[#0f1117] border border-[#252836] rounded-2xl overflow-hidden">
+              <div className="flex items-center justify-between px-5 py-3.5 border-b border-[#1e2230]">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-7 h-7 rounded-lg bg-emerald-500/20 flex items-center justify-center">
+                    <Wrench size={13} className="text-emerald-400" />
+                  </div>
+                  <span className="text-sm font-bold text-[#e2e8f0]">הצעה אוטומטית — טיפול תקופתי</span>
+                </div>
+              </div>
+              <div className="px-5 py-5 text-center space-y-4">
+                <p className="text-sm text-[#4a5270]">
+                  הזן ק״מ נוכחי לזיהוי אוטומטי של אינטרוול השירות ויצירת הצעה
+                </p>
+                <button
+                  onClick={() => setShowPeriodicModal(true)}
+                  className="inline-flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white font-black text-sm px-6 py-3 rounded-xl transition-colors"
+                >
+                  <Gauge size={14} />
+                  הזן קילומטראז׳ נוכחי
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* The modal itself */}
+          {showPeriodicModal && (
+            <PeriodicMileageModal
+              plate={data.vehicle.plate}
+              make={data.vehicle.make}
+              model={data.vehicle.model}
+              year={data.vehicle.year}
+              fuelType={data.vehicle.fuelType}
+              transmission={data.vehicle.transmission}
+              initialMileage={data.vehicle.mileage ?? undefined}
+              onConfirm={fillFromPeriodic}
+              onClose={() => setShowPeriodicModal(false)}
+            />
+          )}
+        </>
       )}
 
       {/* ════════════════════════════════════════════════════════════

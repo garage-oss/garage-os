@@ -83,6 +83,7 @@ export interface ScheduleResult {
   vat:               number
   total:             number
   isGeneric:         boolean  // true if generic fallback was used
+  isFallback?:       boolean  // true if hardcoded default quote (no DB schedule found)
   matchNote?:        string   // e.g. "התאמה לפי דגם בלבד"
   scheduleNotes?:    string   // notes from the schedule record
 }
