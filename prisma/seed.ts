@@ -442,6 +442,21 @@ async function main() {
         notes: 'בדוק קוד מנוע והוראות יצרן לאישור — חובה לפני שליחה ללקוח' })
     }
 
+    // Windshield washer fluid — every service
+    items.push({ id: `${p}-wash`, category: 'INSPECTION', nameHe: 'נוזל שמשות',
+      quantity: 1, unitPrice: 15, laborHours: 0,
+      required: true, priority: 'REQUIRED', sortOrder: 10 })
+
+    // Fuel system cleaner — every service
+    items.push({ id: `${p}-clean`, category: 'INSPECTION', nameHe: 'חומר ניקוי מערכת דלק',
+      quantity: 1, unitPrice: 20, laborHours: 0,
+      required: true, priority: 'REQUIRED', sortOrder: 11 })
+
+    // Brake inspection — every service (physical check; sortOrder 12 keeps it before general inspection)
+    items.push({ id: `${p}-brinsp`, category: 'BRAKE_PADS', nameHe: 'בדיקת בלמים',
+      quantity: 1, unitPrice: 0, laborHours: 0.5,
+      required: true, priority: 'REQUIRED', sortOrder: 12 })
+
     // Inspection — always last
     const inspHours =
       intervalKm === 15000  ? 0.25 :

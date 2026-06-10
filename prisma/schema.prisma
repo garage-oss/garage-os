@@ -3,8 +3,12 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  // DIRECT_URL bypasses the connection pooler (PgBouncer / Supabase pooler) for
+  // Prisma migrations and introspection. Required when DATABASE_URL points to a
+  // pooler endpoint. Leave unset if you connect directly to Postgres.
+  directUrl = env("DIRECT_URL")
 }
 
 // ─── Enums ────────────────────────────────────────────────────────────────────
@@ -203,8 +207,9 @@ model Organization {
   clockEntries       ClockEntry[]
   migrationPresets   MigrationPreset[]
   migrationBatches   MigrationBatch[]
-  quoteRequests      QuoteRequest[]
-  aiQuoteAnalyses    AiQuoteAnalysis[]
+  quoteRequests        QuoteRequest[]
+  aiQuoteAnalyses      AiQuoteAnalysis[]
+  sqlServerIntegration SqlServerIntegration?
 }
 
 model Membership {
@@ -902,4 +907,62 @@ model AiQuoteAnalysis {
   @@index([organizationId])
   @@index([organizationId, createdAt(sort: Desc)])
   @@index([workOrderId])
+}
+
+// ─── SQL Server Integration ───────────────────────────────────────────────────
+
+model SqlServerIntegration {
+  id             String       @id @default(cuid())
+  organizationId String       @unique
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  server         String
+  database       String
+  username       String
+  passwordEnc    String       // AES-256-GCM encrypted — never returned to client
+  port           Int          @default(1433)
+  encrypt        Boolean      @default(false)
+  trustCert      Boolean      @default(true)
+
+  // ── Connection health ──────────────────────────────────────────────────────
+  lastTestedAt   DateTime?
+  lastTestOk     Boolean?
+  lastTestError  String?
+
+  // ── Sync settings ──────────────────────────────────────────────────────────
+  syncEnabled     Boolean      @default(false)
+  syncIntervalMin Int          @default(60)
+  lastSyncAt      DateTime?
+
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  syncLogs       SqlSyncLog[]
+
+  @@index([organizationId])
+}
+
+model SqlSyncLog {
+  id            String               @id @default(cuid())
+  integrationId String
+  integration   SqlServerIntegration @relation(fields: [integrationId], references: [id], onDelete: Cascade)
+  organizationId String
+
+  entity        String   // customers | vehicles | work_orders | invoices | suppliers | parts
+  direction     String   // pull | push
+  status        String   // running | completed | failed
+
+  rowsRead      Int      @default(0)
+  rowsInserted  Int      @default(0)
+  rowsUpdated   Int      @default(0)
+  rowsSkipped   Int      @default(0)
+  rowsFailed    Int      @default(0)
+
+  errorMessage  String?
+  startedAt     DateTime @default(now())
+  finishedAt    DateTime?
+
+  @@index([integrationId])
+  @@index([organizationId])
+  @@index([organizationId, startedAt(sort: Desc)])
 }

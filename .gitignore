@@ -1,5 +1,23 @@
+# Dependencies
+node_modules/
+
+# Build output
+.next/
+tsconfig.tsbuildinfo
+
+# Environment secrets — NEVER commit these
 .env
 .env.local
-.next/
-node_modules/
-tsconfig.tsbuildinfo
+.env*.local
+
+# Claude Code IDE settings — machine-specific
+.claude/
+
+# Playwright / test screenshots
+screenshots/
+test-results/
+playwright-report/
+
+# OS
+.DS_Store
+Thumbs.db

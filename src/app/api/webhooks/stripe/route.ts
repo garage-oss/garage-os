@@ -15,9 +15,8 @@ import { logger } from '@/lib/logger'
 import type Stripe from 'stripe'
 
 export const dynamic = 'force-dynamic'
-
-// Disable body parsing — we need the raw bytes for signature verification
-export const config = { api: { bodyParser: false } }
+// Note: App Router always provides the raw body via req.arrayBuffer() —
+// the Pages Router `config.api.bodyParser` export is not used here.
 
 export async function POST(req: NextRequest) {
   const signature = req.headers.get('stripe-signature')

@@ -26,9 +26,11 @@ const PROD_HEADERS = [
 ]
 
 const nextConfig = {
-  // ── Standalone output for Docker deployment ────────────────────────────────
-  // Produces a minimal self-contained build in .next/standalone/
-  output: 'standalone',
+  // ── Output mode ───────────────────────────────────────────────────────────
+  // Docker:  'standalone' — produces a minimal self-contained build
+  // Vercel:  omit — Vercel manages its own output format; setting 'standalone'
+  //          breaks the deployment (functions won't be found)
+  ...(process.env.VERCEL ? {} : { output: 'standalone' }),
 
   // ── Public env vars for client components ─────────────────────────────────
   env: {

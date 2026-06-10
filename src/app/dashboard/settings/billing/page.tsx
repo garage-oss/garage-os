@@ -1,7 +1,7 @@
 import { requireOrg, PLAN_LABELS, PLAN_COLORS } from '@/lib/org'
 import { prisma } from '@/lib/prisma'
 import Link from 'next/link'
-import { Users, CreditCard, Building2, Check, Zap } from 'lucide-react'
+import { Users, CreditCard, Building2, Check, Zap, Plug } from 'lucide-react'
 
 export const dynamic = 'force-dynamic'
 
@@ -48,11 +48,12 @@ export default async function BillingPage() {
       </div>
 
       {/* Quick nav */}
-      <div className="grid grid-cols-3 gap-3 mb-6">
+      <div className="grid grid-cols-4 gap-3 mb-6">
         {[
-          { href: '/dashboard/settings', label: 'פרופיל', icon: Building2 },
-          { href: '/dashboard/settings/team', label: 'צוות', icon: Users },
-          { href: '/dashboard/settings/billing', label: 'תכנית', icon: CreditCard, active: true },
+          { href: '/dashboard/settings',                         label: 'פרופיל',      icon: Building2 },
+          { href: '/dashboard/settings/team',                    label: 'צוות',        icon: Users },
+          { href: '/dashboard/settings/billing',                 label: 'תכנית',       icon: CreditCard, active: true },
+          { href: '/dashboard/settings/integrations/sql-server', label: 'אינטגרציות',  icon: Plug },
         ].map(({ href, label, icon: Icon, active }) => (
           <Link key={href} href={href}
             className={`flex items-center gap-2 px-4 py-3 rounded-xl border text-sm font-medium transition-all ${

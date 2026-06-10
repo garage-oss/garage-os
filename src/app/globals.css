@@ -42,3 +42,11 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: var(--text-muted);
 }
+
+/* ── Input base utility ───────────────────────────────────────────────────── */
+.input-base {
+  @apply w-full px-3 py-2 rounded-lg bg-[#13151f] border border-[#2e3147] text-[#e2e8f0]
+         text-sm placeholder-[#4a5170] outline-none
+         focus:border-[#6366f1] focus:ring-1 focus:ring-[#6366f1]/30
+         transition-colors;
+}

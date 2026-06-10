@@ -2,7 +2,7 @@ import { requireOrg, getOrgMembers, getOrgInvitations, ROLE_LABELS, ROLE_COLORS 
 import { isAdmin } from '@/lib/rbac'
 import { prisma } from '@/lib/prisma'
 import Link from 'next/link'
-import { Users, CreditCard, Building2, Copy } from 'lucide-react'
+import { Users, CreditCard, Building2, Copy, Plug } from 'lucide-react'
 import { InviteForm } from '@/components/settings/InviteForm'
 import { TeamActions } from '@/components/settings/TeamActions'
 
@@ -27,11 +27,12 @@ export default async function TeamPage() {
       </div>
 
       {/* Quick nav */}
-      <div className="grid grid-cols-3 gap-3 mb-6">
+      <div className="grid grid-cols-4 gap-3 mb-6">
         {[
-          { href: '/dashboard/settings', label: 'פרופיל', icon: Building2 },
-          { href: '/dashboard/settings/team', label: 'צוות', icon: Users, active: true },
-          { href: '/dashboard/settings/billing', label: 'תכנית', icon: CreditCard },
+          { href: '/dashboard/settings',                          label: 'פרופיל',      icon: Building2 },
+          { href: '/dashboard/settings/team',                     label: 'צוות',        icon: Users,     active: true },
+          { href: '/dashboard/settings/billing',                  label: 'תכנית',       icon: CreditCard },
+          { href: '/dashboard/settings/integrations/sql-server',  label: 'אינטגרציות',  icon: Plug },
         ].map(({ href, label, icon: Icon, active }) => (
           <Link key={href} href={href}
             className={`flex items-center gap-2 px-4 py-3 rounded-xl border text-sm font-medium transition-all ${

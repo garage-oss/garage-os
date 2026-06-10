@@ -3,7 +3,7 @@ import { isAdmin } from '@/lib/rbac'
 import { prisma } from '@/lib/prisma'
 import Link from 'next/link'
 import { OrgProfileForm } from '@/components/settings/OrgProfileForm'
-import { Users, CreditCard, Building2, Hash, Globe } from 'lucide-react'
+import { Users, CreditCard, Building2, Hash, Globe, Plug } from 'lucide-react'
 
 export const dynamic = 'force-dynamic'
 
@@ -27,11 +27,12 @@ export default async function SettingsPage() {
       </div>
 
       {/* Quick nav */}
-      <div className="grid grid-cols-3 gap-3 mb-6">
+      <div className="grid grid-cols-4 gap-3 mb-6">
         {[
-          { href: '/dashboard/settings',         label: 'פרופיל', icon: Building2, active: true  },
-          { href: '/dashboard/settings/team',     label: 'צוות',   icon: Users,     active: false },
-          { href: '/dashboard/settings/billing',  label: 'תכנית',  icon: CreditCard,active: false },
+          { href: '/dashboard/settings',                            label: 'פרופיל',      icon: Building2, active: true  },
+          { href: '/dashboard/settings/team',                       label: 'צוות',        icon: Users,     active: false },
+          { href: '/dashboard/settings/billing',                    label: 'תכנית',       icon: CreditCard,active: false },
+          { href: '/dashboard/settings/integrations/sql-server',    label: 'אינטגרציות',  icon: Plug,      active: false },
         ].map(({ href, label, icon: Icon, active }) => (
           <Link
             key={href}
