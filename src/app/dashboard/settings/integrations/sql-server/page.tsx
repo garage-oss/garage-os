@@ -52,6 +52,22 @@ export default async function SqlServerIntegrationPage() {
         ))}
       </div>
 
+      {/* Integrations sub-nav */}
+      <div className="flex gap-2 mb-6 border-b border-[#2e3147] pb-3">
+        <Link
+          href="/dashboard/settings/integrations/sql-server"
+          className="px-3 py-1.5 rounded-lg text-sm font-medium bg-[#6366f1]/10 border border-[#6366f1]/30 text-[#6366f1]"
+        >
+          SQL Server
+        </Link>
+        <Link
+          href="/dashboard/settings/integrations/nesher"
+          className="px-3 py-1.5 rounded-lg text-sm text-[#8892a4] hover:text-[#e2e8f0] hover:bg-[#252836] transition-all"
+        >
+          נשר SQL Import
+        </Link>
+      </div>
+
       {/* SQL Server form */}
       <SqlServerIntegrationForm initialConfig={config} />
     </div>

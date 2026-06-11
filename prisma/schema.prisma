@@ -316,7 +316,12 @@ model Customer {
   phone          String
   email          String?
   address        String?
+  city           String?
+  mobile         String?
   notes          String?
+  importSource   String?
+  importId       String?
+  externalNo     String?
   vehicles       Vehicle[]
   workOrders     WorkOrder[]
   invoices       Invoice[]
@@ -325,7 +330,9 @@ model Customer {
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 
+  @@unique([organizationId, importSource, importId])
   @@index([organizationId])
+  @@index([organizationId, externalNo])
 }
 
 model Vehicle {
@@ -343,6 +350,9 @@ model Vehicle {
   transmission       Transmission?
   mileage            Int?
   notes              String?
+  importSource       String?
+  importId           String?
+  makeCode           String?
   customerId         String
   customer           Customer            @relation(fields: [customerId], references: [id])
   workOrders         WorkOrder[]
@@ -353,6 +363,7 @@ model Vehicle {
   updatedAt          DateTime            @updatedAt
 
   @@unique([plate, organizationId])
+  @@unique([organizationId, importSource, importId])
   @@index([organizationId])
 }
 
@@ -392,10 +403,17 @@ model WorkOrder {
   receivedAt           DateTime?
   signatureUrl         String?
   assignedTechnicianId String?
+  importSource         String?
+  importId             String?
+  laborTotal           Decimal?            @db.Decimal(10, 2)
+  advisorName          String?
+  driverName           String?
+  driverPhone          String?
   createdAt            DateTime            @default(now())
   updatedAt            DateTime            @updatedAt
 
   @@unique([workOrderNumber, organizationId])
+  @@unique([organizationId, importSource, importId])
   @@index([organizationId])
   @@index([organizationId, status])
   @@index([organizationId, createdAt(sort: Desc)])
