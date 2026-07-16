@@ -66,6 +66,27 @@ const envSchema = z.object({
   ENCRYPTION_KEY:         z.string().optional(),
   SESSION_TIMEOUT_MINUTES: z.coerce.number().default(480), // 8 hours
 
+  // ── NESHER Connector (GarageOS-Connector local service) ──────────────────
+  NESHER_CONNECTOR_URL:     z.string().url().default('http://localhost:4000'),
+  NESHER_CONNECTOR_API_KEY: z.string().optional(),
+
+  // ── Customer Portal ────────────────────────────────────────────────────────
+  // Public base URL shown in portal links (no trailing slash)
+  CUSTOMER_PORTAL_BASE_URL: z.string().url().default('http://localhost:3000'),
+  // HMAC secret for OTP code hashing — generate: openssl rand -hex 32
+  OTP_SECRET:               z.string().min(16).default('dev-otp-secret-change-in-production'),
+  // Demo mode — shows code on screen and skips pilot check.
+  // MUST be 'false' (or unset) in production.
+  CUSTOMER_PORTAL_DEMO_MODE: z.enum(['true', 'false']).default('false'),
+  // Israeli SMS provider credentials (choose one)
+  SMS_INFORU_USERNAME:  z.string().optional(),
+  SMS_INFORU_API_KEY:   z.string().optional(),
+  SMS_019_USERNAME:     z.string().optional(),
+  SMS_019_PASSWORD:     z.string().optional(),
+  SMS_VONAGE_API_KEY:   z.string().optional(),
+  SMS_VONAGE_API_SECRET:z.string().optional(),
+  SMS_VONAGE_FROM:      z.string().optional(),
+
   // ── Feature flags (default values are production-safe) ────────────────────
   FLAG_AI_DIAGNOSTICS:   z.string().default('true'),
   FLAG_AUDIT_LOG:        z.string().default('true'),
@@ -136,6 +157,20 @@ function validate(): Env {
         '❌  FLAG_STRIPE_PAYMENTS=true requires STRIPE_SECRET_KEY and STRIPE_PUBLISHABLE_KEY'
       )
     }
+  }
+
+  // Customer portal — demo mode must be off in production
+  if (d.NODE_ENV === 'production' && d.CUSTOMER_PORTAL_DEMO_MODE === 'true') {
+    throw new Error(
+      '❌  CUSTOMER_PORTAL_DEMO_MODE=true is not allowed in production'
+    )
+  }
+
+  // OTP secret must be changed from the dev default in production
+  if (d.NODE_ENV === 'production' && d.OTP_SECRET === 'dev-otp-secret-change-in-production') {
+    throw new Error(
+      '❌  OTP_SECRET must be set to a random secret in production (openssl rand -hex 32)'
+    )
   }
 
   // Encryption key format check

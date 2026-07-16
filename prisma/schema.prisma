@@ -210,6 +210,8 @@ model Organization {
   quoteRequests        QuoteRequest[]
   aiQuoteAnalyses      AiQuoteAnalysis[]
   sqlServerIntegration SqlServerIntegration?
+  serviceBookings      ServiceBooking[]
+  appointments         Appointment[]
 }
 
 model Membership {
@@ -326,7 +328,13 @@ model Customer {
   workOrders     WorkOrder[]
   invoices       Invoice[]
   quotes         Quote[]
-  commLogs       CommLog[]
+  commLogs        CommLog[]
+  magicLinks      CustomerMagicLink[]
+  sessions        CustomerSession[]
+  pilotRecord     CustomerPilot?
+  previewTokens   CustomerPreviewToken[] @relation("CustomerPreviewTokens")
+  serviceBookings ServiceBooking[]
+  appointments    Appointment[]
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 
@@ -359,6 +367,8 @@ model Vehicle {
   quotes             Quote[]
   media              MediaFile[]
   diagnosticSessions DiagnosticSession[]
+  serviceBookings    ServiceBooking[]
+  appointments       Appointment[]
   createdAt          DateTime            @default(now())
   updatedAt          DateTime            @updatedAt
 
@@ -505,26 +515,45 @@ model Quote {
   vehicle        Vehicle?     @relation(fields: [vehicleId], references: [id])
   workOrderId    String?      @unique
   workOrder      WorkOrder?   @relation(fields: [workOrderId], references: [id])
-  isEstimate     Boolean      @default(false)
-  periodicData   Json?
-  items          QuoteItem[]
-  media          MediaFile[]
-  aiAnalysis     AiQuoteAnalysis?
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
+  isEstimate           Boolean      @default(false)
+  periodicData         Json?
+  portalToken          String?      @unique @default(cuid())
+  portalTokenExpiresAt DateTime?
+  items                QuoteItem[]
+  media                MediaFile[]
+  aiAnalysis           AiQuoteAnalysis?
+  portalResponses      QuotePortalResponse[]
+  createdAt            DateTime     @default(now())
+  updatedAt            DateTime     @updatedAt
 
   @@unique([quoteNumber, organizationId])
   @@index([organizationId])
 }
 
 model QuoteItem {
-  id          String  @id @default(cuid())
+  id          String   @id @default(cuid())
   description String
-  quantity    Int     @default(1)
-  unitPrice   Decimal @db.Decimal(10, 2)
-  total       Decimal @db.Decimal(10, 2)
+  quantity    Int      @default(1)
+  unitPrice   Decimal  @db.Decimal(10, 2)
+  total       Decimal  @db.Decimal(10, 2)
+  discount    Decimal  @default(0) @db.Decimal(5, 2)   // percentage 0-100
+  laborHours  Decimal  @default(0) @db.Decimal(8, 2)
+  itemType    String   @default("part")                 // part | labor | other
   quoteId     String
-  quote       Quote   @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  quote       Quote    @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+}
+
+model QuotePortalResponse {
+  id        String   @id @default(cuid())
+  quoteId   String
+  quote     Quote    @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  action    String   // APPROVED | REJECTED | CALL_REQUESTED
+  ip        String?
+  userAgent String?
+  notes     String?
+  createdAt DateTime @default(now())
+
+  @@index([quoteId])
 }
 
 // ─── Media / Notes / Diagnostics ─────────────────────────────────────────────
@@ -983,4 +1012,132 @@ model SqlSyncLog {
   @@index([integrationId])
   @@index([organizationId])
   @@index([organizationId, startedAt(sort: Desc)])
+}
+
+// ─── Customer Self-Service Portal ─────────────────────────────────────────────
+
+model CustomerOtp {
+  id        String    @id @default(cuid())
+  phone     String
+  codeHash  String    // HMAC-SHA256(OTP_SECRET, phone:code) — never store plaintext
+  attempts  Int       @default(0)
+  lockedAt  DateTime?
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([phone])
+}
+
+model CustomerMagicLink {
+  id         String    @id @default(cuid())
+  token      String    @unique @default(cuid())
+  email      String
+  customerId String
+  customer   Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  expiresAt  DateTime
+  usedAt     DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([token])
+  @@index([customerId])
+}
+
+model CustomerSession {
+  id           String   @id @default(cuid())
+  token        String   @unique @default(cuid())
+  customerId   String
+  customer     Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  ip           String?
+  userAgent    String?
+  expiresAt    DateTime
+  lastActiveAt DateTime @default(now())
+  createdAt    DateTime @default(now())
+
+  @@index([token])
+  @@index([customerId])
+}
+
+model CustomerPilot {
+  id             String    @id @default(cuid())
+  customerId     String    @unique
+  organizationId String
+  addedAt        DateTime  @default(now())
+  addedByUserId  String
+  disabledAt     DateTime?
+  notes          String?
+  customer       Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  // Pilot onboarding checklist
+  phoneVerified    Boolean @default(false)
+  vehiclesVerified Boolean @default(false)
+  historyVerified  Boolean @default(false)
+  loggedIn         Boolean @default(false)
+  quoteTested      Boolean @default(false)
+  apptTested       Boolean @default(false)
+  feedbackReceived Boolean @default(false)
+  checklistNotes   String?
+
+  @@index([organizationId])
+}
+
+// Short-lived signed preview token — OWNER only, 10-minute expiry
+model CustomerPreviewToken {
+  id             String    @id @default(cuid())
+  token          String    @unique
+  customerId     String
+  customer       Customer  @relation("CustomerPreviewTokens", fields: [customerId], references: [id], onDelete: Cascade)
+  organizationId String
+  createdById    String
+  expiresAt      DateTime
+  viewedAt       DateTime?
+  createdAt      DateTime  @default(now())
+
+  @@index([token])
+  @@index([customerId])
+}
+
+model ServiceBooking {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  customerId     String
+  customer       Customer     @relation(fields: [customerId], references: [id])
+  vehicleId      String
+  vehicle        Vehicle      @relation(fields: [vehicleId], references: [id])
+  serviceType    String       // periodic|brakes|ac|battery|tires|warning_light|fault|inspection|other
+  complaint      String?
+  mileage        Int?
+  status         String       @default("PENDING") // PENDING|CONFIRMED|CANCELLED
+  notes          String?
+  quoteId        String?
+  appointments   Appointment[]
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@index([organizationId])
+  @@index([customerId])
+  @@index([organizationId, status])
+}
+
+model Appointment {
+  id              String         @id @default(cuid())
+  organizationId  String
+  organization    Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  customerId      String
+  customer        Customer       @relation(fields: [customerId], references: [id])
+  vehicleId       String?
+  vehicle         Vehicle?       @relation(fields: [vehicleId], references: [id])
+  bookingId       String?
+  booking         ServiceBooking? @relation(fields: [bookingId], references: [id])
+  scheduledAt     DateTime
+  durationMinutes Int            @default(60)
+  status          String         @default("PENDING_CONFIRMATION") // PENDING_CONFIRMATION|CONFIRMED|CANCELLED
+  notes           String?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  @@index([organizationId])
+  @@index([customerId])
+  @@index([organizationId, scheduledAt])
 }

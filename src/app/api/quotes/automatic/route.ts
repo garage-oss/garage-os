@@ -1,0 +1,166 @@
+import { NextRequest, NextResponse } from 'next/server'
+import { requireOrg } from '@/lib/org'
+import { prisma } from '@/lib/prisma'
+
+export const dynamic = 'force-dynamic'
+
+const VAT_RATE = parseFloat(process.env.VAT_RATE ?? '0.17')
+
+export interface AutoQuoteItem {
+  description: string
+  quantity:    number
+  unitPrice:   number
+  laborHours:  number
+  discount:    number   // percentage 0-100
+  itemType:    'part' | 'labor' | 'other'
+}
+
+export async function POST(req: NextRequest) {
+  const { orgId } = await requireOrg()
+
+  const body = await req.json() as {
+    plate:       string
+    mileage:     number
+    complaint:   string
+    nesherCliNo: number | null
+    cliName:     string
+    carDesc:     string
+    items:       AutoQuoteItem[]
+    laborRate:   number
+    notes:       string
+  }
+
+  const { plate, mileage, complaint, nesherCliNo, cliName, carDesc, items, laborRate, notes } = body
+
+  if (!plate?.trim()) return NextResponse.json({ error: 'נדרש מספר רישוי' }, { status: 400 })
+  if (!items?.length) return NextResponse.json({ error: 'נדרש לפחות פריט אחד' }, { status: 400 })
+
+  // ── Find or create customer ────────────────────────────────────────────────
+  const customerName = cliName?.trim() || 'לקוח לא ידוע'
+  let customer = null
+
+  if (nesherCliNo) {
+    customer = await prisma.customer.findFirst({
+      where: { organizationId: orgId, importSource: 'nesher', importId: String(nesherCliNo) },
+    })
+  }
+
+  if (!customer && customerName !== 'לקוח לא ידוע') {
+    const existing = await prisma.customer.findFirst({
+      where: { organizationId: orgId, name: customerName },
+    })
+    if (existing) customer = existing
+  }
+
+  if (!customer) {
+    customer = await prisma.customer.create({
+      data: {
+        organizationId: orgId,
+        name:           customerName,
+        phone:          '',
+        importSource:   nesherCliNo ? 'nesher' : null,
+        importId:       nesherCliNo ? String(nesherCliNo) : null,
+        externalNo:     nesherCliNo ? String(nesherCliNo) : null,
+      },
+    })
+  }
+
+  // ── Find or create vehicle ─────────────────────────────────────────────────
+  const cleanPlate = plate.trim().toUpperCase()
+  let vehicle = await prisma.vehicle.findFirst({
+    where: { organizationId: orgId, plate: cleanPlate },
+  })
+
+  if (!vehicle) {
+    vehicle = await prisma.vehicle.create({
+      data: {
+        organizationId: orgId,
+        plate:          cleanPlate,
+        make:           carDesc?.split(' ')[0] || 'לא ידוע',
+        model:          carDesc?.split(' ').slice(1).join(' ') || '',
+        year:           new Date().getFullYear(),
+        mileage:        mileage || null,
+        customerId:     customer.id,
+        importSource:   'nesher',
+        importId:       cleanPlate,
+      },
+    })
+  } else if (mileage) {
+    await prisma.vehicle.update({ where: { id: vehicle.id }, data: { mileage } })
+  }
+
+  // ── Calculate totals ───────────────────────────────────────────────────────
+  let partsTotal   = 0
+  let laborTotal   = 0
+  let totalLaborHours = 0
+
+  const quoteItems = items.map(it => {
+    const lineBase   = it.itemType === 'labor'
+      ? it.laborHours * laborRate
+      : it.quantity * it.unitPrice + it.laborHours * laborRate
+    const discounted = lineBase * (1 - (it.discount ?? 0) / 100)
+    const rounded    = Math.round(discounted * 100) / 100
+
+    if (it.itemType === 'labor') {
+      laborTotal     += rounded
+      totalLaborHours += it.laborHours
+    } else {
+      partsTotal     += rounded
+      totalLaborHours += it.laborHours ?? 0
+    }
+
+    return {
+      description: it.description,
+      quantity:    it.quantity,
+      unitPrice:   it.unitPrice,
+      total:       rounded,
+      discount:    it.discount ?? 0,
+      laborHours:  it.laborHours ?? 0,
+      itemType:    it.itemType ?? 'part',
+    }
+  })
+
+  const subtotal  = partsTotal + laborTotal
+  const vatAmount = Math.round(subtotal * VAT_RATE * 100) / 100
+  const total     = subtotal + vatAmount
+
+  // ── Next quote number ──────────────────────────────────────────────────────
+  const last = await prisma.quote.findFirst({
+    where: { organizationId: orgId },
+    orderBy: { createdAt: 'desc' },
+    select: { quoteNumber: true },
+  })
+  const nextNum = last?.quoteNumber
+    ? String(parseInt(last.quoteNumber.replace(/\D/g, '') || '0', 10) + 1).padStart(4, '0')
+    : '0001'
+  const quoteNumber = `Q${nextNum}`
+
+  // ── Create quote in PostgreSQL ─────────────────────────────────────────────
+  const validUntil = new Date()
+  validUntil.setDate(validUntil.getDate() + 30)
+
+  const quote = await prisma.quote.create({
+    data: {
+      organizationId: orgId,
+      quoteNumber,
+      status:         'DRAFT',
+      laborHours:     totalLaborHours,
+      laborRate,
+      partsTotal,
+      totalPrice:     total,
+      notes:          notes || complaint || null,
+      validUntil,
+      isEstimate:     true,
+      customerId:     customer.id,
+      vehicleId:      vehicle.id,
+      // portalToken auto-generated by @default(cuid())
+      portalTokenExpiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+      items: {
+        create: quoteItems,
+      },
+    },
+    select: { id: true, quoteNumber: true, portalToken: true },
+  })
+
+  return NextResponse.json({ quoteId: quote.id, quoteNumber: quote.quoteNumber, portalToken: quote.portalToken })
+}

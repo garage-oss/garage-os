@@ -1,10 +1,11 @@
 'use client'
 
 import { useState, useCallback } from 'react'
+import Link from 'next/link'
 import {
   Wifi, WifiOff, RefreshCw, Database, Users, Car, FileText,
   ChevronDown, ChevronUp, PlayCircle, CheckCircle2, XCircle,
-  Loader2, AlertTriangle, Eye, BarChart2,
+  Loader2, AlertTriangle, Eye, BarChart2, ExternalLink,
 } from 'lucide-react'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -232,6 +233,19 @@ export function NesherImportPanel() {
           </div>
         )}
       </div>
+
+      {/* ── Quick link to live work orders ─────────────────────────────────── */}
+      <Link
+        href="/dashboard/nesher/workorders"
+        className="flex items-center justify-between px-5 py-3.5 bg-[#1a1d27] border border-[#2e3147] rounded-xl hover:border-[#6366f1]/40 hover:bg-[#252836] transition-all group"
+      >
+        <div className="flex items-center gap-2">
+          <FileText size={15} className="text-[#6366f1]" />
+          <span className="text-sm font-medium">כרטיסיות עבודה חיות</span>
+          <span className="text-xs text-[#5a6279]">— נתונים ישירות מה-Connector</span>
+        </div>
+        <ExternalLink size={13} className="text-[#5a6279] group-hover:text-[#6366f1] transition-colors" />
+      </Link>
 
       {/* ── 3. Dry-run section ─────────────────────────────────────────────── */}
       <div className="bg-[#1a1d27] border border-[#2e3147] rounded-xl overflow-hidden">
