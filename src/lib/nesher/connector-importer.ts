@@ -142,7 +142,7 @@ export async function runNesherImportViaConnector(orgId: string): Promise<Import
     if (c.externalNo) externalNoToCustomerId.set(c.externalNo, c.id)
   }
 
-  for (const [externalNo, cust] of customerMap) {
+  for (const [externalNo, cust] of Array.from(customerMap.entries())) {
     try {
       const saved = await prisma.customer.upsert({
         where: {
@@ -195,7 +195,7 @@ export async function runNesherImportViaConnector(orgId: string): Promise<Import
     plateToCustomerId.set(v.plate, v.customerId)
   }
 
-  for (const [plate, veh] of vehicleMap) {
+  for (const [plate, veh] of Array.from(vehicleMap.entries())) {
     const customerId = veh.customerExternalNo
       ? externalNoToCustomerId.get(veh.customerExternalNo)
       : undefined
