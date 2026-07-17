@@ -47,22 +47,103 @@ class DemoSmsProvider implements SmsProvider {
   }
 }
 
-// Swap in a real Israeli SMS provider here.
-// Supported providers (uncomment and configure the relevant one):
-//
-// Inforu (recommended for Israel):
-//   SMS_INFORU_USERNAME + SMS_INFORU_API_KEY
-//
-// 019 SMS / D-Messaging:
-//   SMS_019_USERNAME + SMS_019_PASSWORD
-//
-// Vonage (formerly Nexmo):
-//   SMS_VONAGE_API_KEY + SMS_VONAGE_API_SECRET + SMS_VONAGE_FROM
-//
+class InForuProvider implements SmsProvider {
+  constructor(private username: string, private apiKey: string) {}
+
+  async sendOtp(phone: string, code: string): Promise<{ success: boolean; error?: string }> {
+    const message = `קוד הכניסה שלך ל-GarageOS: ${code}. תקף ל-5 דקות.`
+    // Normalize to Israeli international format
+    const digits = phone.replace(/\D/g, '')
+    const intl = digits.startsWith('972') ? digits : digits.startsWith('0') ? '972' + digits.slice(1) : '972' + digits
+
+    const xml = `<Inforu><User><Username>${this.username}</Username><ApiKey>${this.apiKey}</ApiKey></User><Content><SmsMessage>${message}</SmsMessage></Content><Recipients><PhoneNumber>${intl}</PhoneNumber></Recipients><Settings><DefaultRegion>IL</DefaultRegion></Settings></Inforu>`
+
+    try {
+      const res = await fetch('https://api.inforu.co.il/SendMessageXml.ashx', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body:    `InforuXML=${encodeURIComponent(xml)}`,
+      })
+      const text = await res.text()
+      // Inforu returns XML; success when Status="1"
+      if (text.includes('Status="1"') || text.includes('<Status>1</Status>')) {
+        return { success: true }
+      }
+      console.error('[SMS Inforu] unexpected response:', text)
+      return { success: false, error: text }
+    } catch (err) {
+      return { success: false, error: String(err) }
+    }
+  }
+}
+
+class Provider019 implements SmsProvider {
+  constructor(private username: string, private password: string) {}
+
+  async sendOtp(phone: string, code: string): Promise<{ success: boolean; error?: string }> {
+    const message = `קוד הכניסה שלך ל-GarageOS: ${code}. תקף ל-5 דקות.`
+    const digits = phone.replace(/\D/g, '')
+    const intl = digits.startsWith('972') ? digits : digits.startsWith('0') ? '972' + digits.slice(1) : '972' + digits
+
+    try {
+      const params = new URLSearchParams({
+        UN: this.username,
+        PW: this.password,
+        SenderID: 'GarageOS',
+        PhoneNumber: intl,
+        Text: message,
+      })
+      const res  = await fetch(`https://www.d-messaging.co.il/Api/SendSms/?${params}`)
+      const text = await res.text()
+      if (res.ok && !text.startsWith('-')) return { success: true }
+      return { success: false, error: text }
+    } catch (err) {
+      return { success: false, error: String(err) }
+    }
+  }
+}
+
+class VonageProvider implements SmsProvider {
+  constructor(
+    private apiKey: string,
+    private apiSecret: string,
+    private from: string,
+  ) {}
+
+  async sendOtp(phone: string, code: string): Promise<{ success: boolean; error?: string }> {
+    const message = `קוד הכניסה שלך ל-GarageOS: ${code}. תקף ל-5 דקות.`
+    const digits = phone.replace(/\D/g, '')
+    const to = digits.startsWith('972') ? digits : digits.startsWith('0') ? '972' + digits.slice(1) : '972' + digits
+
+    try {
+      const res = await fetch('https://rest.nexmo.com/sms/json', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ api_key: this.apiKey, api_secret: this.apiSecret, from: this.from, to, text: message }),
+      })
+      const data = await res.json() as { messages?: Array<{ status: string }> }
+      if (data.messages?.[0]?.status === '0') return { success: true }
+      return { success: false, error: JSON.stringify(data) }
+    } catch (err) {
+      return { success: false, error: String(err) }
+    }
+  }
+}
+
 function buildProvider(): SmsProvider | null {
-  // if (process.env.SMS_INFORU_USERNAME && process.env.SMS_INFORU_API_KEY) {
-  //   return new InForuProvider(process.env.SMS_INFORU_USERNAME, process.env.SMS_INFORU_API_KEY)
-  // }
+  if (process.env.SMS_INFORU_USERNAME && process.env.SMS_INFORU_API_KEY) {
+    return new InForuProvider(process.env.SMS_INFORU_USERNAME, process.env.SMS_INFORU_API_KEY)
+  }
+  if (process.env.SMS_019_USERNAME && process.env.SMS_019_PASSWORD) {
+    return new Provider019(process.env.SMS_019_USERNAME, process.env.SMS_019_PASSWORD)
+  }
+  if (process.env.SMS_VONAGE_API_KEY && process.env.SMS_VONAGE_API_SECRET) {
+    return new VonageProvider(
+      process.env.SMS_VONAGE_API_KEY,
+      process.env.SMS_VONAGE_API_SECRET,
+      process.env.SMS_VONAGE_FROM ?? 'GarageOS',
+    )
+  }
   return null
 }
 
