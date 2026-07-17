@@ -116,8 +116,8 @@ export function BookServiceFlow({ initialVehicles }: { initialVehicles: Vehicle[
     if (vehicle && step === 1) setStep(2)
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  async function generateQuote(save = false) {
-    if (!vehicle || !serviceType) return
+  async function generateQuote(save = false): Promise<{ ok: boolean; savedQuoteId?: string }> {
+    if (!vehicle || !serviceType) return { ok: false }
     setGenerating(true); setError(null)
     try {
       const r    = await fetch('/api/portal/bookings/quote', {
@@ -125,12 +125,13 @@ export function BookServiceFlow({ initialVehicles }: { initialVehicles: Vehicle[
         body: JSON.stringify({ vehicleId: vehicle.id, serviceType, complaint, mileage: parseInt(mileage) || 0, save, bookingId }),
       })
       const data = await r.json()
-      if (!r.ok) { setError(data.error ?? 'שגיאה'); return }
+      if (!r.ok) { setError(data.error ?? 'שגיאה'); return { ok: false } }
       setQuoteItems(data.items)
       setQuoteTotals({ subtotal: data.subtotal, vatAmount: data.vatAmount, total: data.total, isDiagnostic: data.isDiagnostic, laborRate: data.laborRate })
       if (save && data.quoteId) setQuoteId(data.quoteId)
       if (!save) setStep(4)
-    } catch { setError('שגיאת רשת') }
+      return { ok: true, savedQuoteId: save ? data.quoteId : undefined }
+    } catch { setError('שגיאת רשת'); return { ok: false } }
     finally   { setGenerating(false) }
   }
 
@@ -154,7 +155,11 @@ export function BookServiceFlow({ initialVehicles }: { initialVehicles: Vehicle[
     setBooking(true); setError(null)
     try {
       let qid = quoteId
-      if (!qid) await generateQuote(true).then(() => { qid = quoteId })
+      if (!qid) {
+        const res = await generateQuote(true)
+        if (!res.ok) return
+        qid = res.savedQuoteId ?? null
+      }
       let bid = bookingId
       if (!bid) bid = await createBooking() ?? null
       const r = await fetch('/api/portal/appointments', {
@@ -365,7 +370,7 @@ export function BookServiceFlow({ initialVehicles }: { initialVehicles: Vehicle[
 
           <p className="text-[11px] text-slate-400 text-center">הצעה בתוקף ל-30 יום · אינה כוללת חלקים שיתגלו בבדיקה</p>
 
-          <button onClick={() => { generateQuote(true).then(() => setStep(5)) }} disabled={generating}
+          <button onClick={async () => { const r = await generateQuote(true); if (r.ok) setStep(5) }} disabled={generating}
             className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-black text-lg py-5 rounded-2xl shadow-md shadow-indigo-200/50 disabled:opacity-60 active:scale-[0.98] transition-all flex items-center justify-center gap-2">
             {generating ? <Loader2 size={20} className="animate-spin" /> : <>אשר הצעה ובחר תור <ChevronLeft size={20} /></>}
           </button>
