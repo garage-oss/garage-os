@@ -10,17 +10,18 @@
  * Pagination: the connector supports cursor-based paging via ?before={card_id}.
  * Each call to runNesherImportViaConnector processes ONE page (≤100 records)
  * and returns nextCursor so the caller can continue with the next page.
+ *
+ * Performance: each page is saved in 3 batch SQL round-trips (one per entity
+ * type) instead of N individual upserts, staying well inside Vercel's 60s limit.
  */
 
-import { prisma }          from '@/lib/prisma'
-import { WorkOrderStatus }  from '@prisma/client'
-import { Decimal }          from '@prisma/client/runtime/library'
-import type { ImportResult } from './importer'
+import { Prisma, WorkOrderStatus }  from '@prisma/client'
+import { prisma }                   from '@/lib/prisma'
+import type { ImportResult }        from './importer'
 
 const IMPORT_SOURCE   = 'NESHER'
 const PAGE_SIZE       = 100
 const NULL_DATE_FLOOR = new Date('1900-01-01').getTime()
-const UPSERT_BATCH    = 10
 
 // ─── Public result type ───────────────────────────────────────────────────────
 
@@ -107,10 +108,6 @@ function toSafeDate(v: string | null | undefined): Date | null {
   return isNaN(d.getTime()) || d.getTime() < NULL_DATE_FLOOR ? null : d
 }
 
-function toDecimal(v: number | null | undefined): Decimal {
-  return new Decimal(v != null ? v : 0)
-}
-
 function resolveStatus(cardSt: string | null | undefined, completedAt: Date | null): WorkOrderStatus {
   if (completedAt) return WorkOrderStatus.COMPLETED
   const s = String(cardSt ?? '').toUpperCase().trim()
@@ -119,16 +116,7 @@ function resolveStatus(cardSt: string | null | undefined, completedAt: Date | nu
   return WorkOrderStatus.PENDING
 }
 
-async function parallel<T, R>(items: T[], handler: (item: T) => Promise<R>): Promise<R[]> {
-  const results: R[] = []
-  for (let i = 0; i < items.length; i += UPSERT_BATCH) {
-    const batchResults = await Promise.all(items.slice(i, i + UPSERT_BATCH).map(handler))
-    results.push(...batchResults)
-  }
-  return results
-}
-
-// ─── Per-batch upsert ─────────────────────────────────────────────────────────
+// ─── Batch upsert (3 SQL round-trips instead of N individual upserts) ─────────
 
 async function processBatch(
   orgId: string,
@@ -136,7 +124,7 @@ async function processBatch(
 ): Promise<Omit<ImportResult, 'dryRun' | 'durationMs'>> {
   const errors: string[] = []
 
-  // Aggregate unique customers from this batch
+  // ── Aggregate unique customers ────────────────────────────────────────────
   const customerMap = new Map<string, { name: string; email: string | null }>()
   for (const c of cards) {
     if (c.cli_no == null || !c.cli_name?.trim()) continue
@@ -146,22 +134,19 @@ async function processBatch(
     }
   }
 
-  // Aggregate unique vehicles from this batch
-  interface AggVehicle {
-    plate:              string
+  // ── Aggregate unique vehicles ─────────────────────────────────────────────
+  const vehicleMap = new Map<string, {
     make:               string
     model:              string
     year:               number
     customerExternalNo: string | null
-  }
-  const vehicleMap = new Map<string, AggVehicle>()
+  }>()
   for (const c of cards) {
     const plate = (c.car_no ?? '').trim().toUpperCase()
     if (!plate) continue
     if (!vehicleMap.has(plate)) {
       const prodYear = c.prod_dt ? new Date(c.prod_dt).getFullYear() : 0
       vehicleMap.set(plate, {
-        plate,
         make:               c.car_code?.trim() || 'לא ידוע',
         model:              (c.car_model === '*' ? c.car_desc : c.car_model)?.trim() || 'לא ידוע',
         year:               prodYear > 1900 ? prodYear : new Date().getFullYear(),
@@ -170,180 +155,213 @@ async function processBatch(
     }
   }
 
-  // ── Phase 1: Customers ────────────────────────────────────────────────────
+  // ── Phase 1: Batch customer upsert ────────────────────────────────────────
   const customerStats = { created: 0, updated: 0, skipped: 0, failed: 0 }
-
-  const customerExternalNos = Array.from(customerMap.keys())
-  const existing = await prisma.customer.findMany({
-    where: { organizationId: orgId, importSource: IMPORT_SOURCE, importId: { in: customerExternalNos } },
-    select: { id: true, externalNo: true, importId: true },
-  })
-  const existingCustomerImportIds = new Set(existing.map(c => c.importId).filter(Boolean) as string[])
   const externalNoToCustomerId = new Map<string, string>()
-  for (const c of existing) {
-    if (c.externalNo) externalNoToCustomerId.set(c.externalNo, c.id)
+
+  if (customerMap.size > 0) {
+    const externalNos = Array.from(customerMap.keys())
+
+    // Pre-load existing to distinguish creates from updates in RETURNING
+    const existingCusts = await prisma.customer.findMany({
+      where: { organizationId: orgId, importSource: IMPORT_SOURCE, importId: { in: externalNos } },
+      select: { id: true, importId: true, externalNo: true },
+    })
+    const existingCustSet = new Set(
+      existingCusts.map(c => c.importId).filter((v): v is string => v != null),
+    )
+    for (const c of existingCusts) {
+      if (c.externalNo) externalNoToCustomerId.set(c.externalNo, c.id)
+    }
+
+    try {
+      const vals = Array.from(customerMap.entries()).map(([externalNo, cust]) =>
+        Prisma.sql`(gen_random_uuid()::text, ${orgId}, ${cust.name}, ${'000000000'}, ${cust.email ?? null}, ${'NESHER'}, ${externalNo}, ${externalNo}, NOW(), NOW())`
+      )
+
+      const rows = await prisma.$queryRaw<{ id: string; import_id: string }[]>`
+        INSERT INTO "Customer"
+          (id, "organizationId", name, phone, email, "importSource", "importId", "externalNo", "createdAt", "updatedAt")
+        VALUES ${Prisma.join(vals)}
+        ON CONFLICT ("organizationId", "importSource", "importId")
+        DO UPDATE SET
+          name         = EXCLUDED.name,
+          email        = EXCLUDED.email,
+          "externalNo" = EXCLUDED."externalNo",
+          "updatedAt"  = NOW()
+        RETURNING id, "importId" AS import_id
+      `
+
+      for (const row of rows) {
+        externalNoToCustomerId.set(row.import_id, row.id)
+        if (existingCustSet.has(row.import_id)) customerStats.updated++
+        else                                     customerStats.created++
+      }
+    } catch (e) {
+      errors.push(`שגיאה בייבוא לקוחות: ${e instanceof Error ? e.message : String(e)}`)
+      customerStats.failed += customerMap.size
+    }
   }
 
-  await parallel(Array.from(customerMap.entries()), async ([externalNo, cust]) => {
-    try {
-      const saved = await prisma.customer.upsert({
-        where: {
-          organizationId_importSource_importId: {
-            organizationId: orgId,
-            importSource:   IMPORT_SOURCE,
-            importId:       externalNo,
-          },
-        },
-        create: {
-          organizationId: orgId,
-          name:           cust.name,
-          phone:          '000000000',
-          email:          cust.email ?? undefined,
-          importSource:   IMPORT_SOURCE,
-          importId:       externalNo,
-          externalNo,
-        },
-        update: { name: cust.name, email: cust.email ?? undefined, externalNo },
-        select: { id: true },
-      })
-      externalNoToCustomerId.set(externalNo, saved.id)
-      if (existingCustomerImportIds.has(externalNo)) customerStats.updated++
-      else                                            customerStats.created++
-    } catch (e) {
-      customerStats.failed++
-      errors.push(`לקוח ${cust.name}: ${e instanceof Error ? e.message : String(e)}`)
-    }
-  })
-
-  // ── Phase 2: Vehicles ─────────────────────────────────────────────────────
+  // ── Phase 2: Batch vehicle upsert ─────────────────────────────────────────
   const vehicleStats = { created: 0, updated: 0, skipped: 0, failed: 0 }
-
-  const plates = Array.from(vehicleMap.keys())
-  const existingVehicles = await prisma.vehicle.findMany({
-    where: { organizationId: orgId, importSource: IMPORT_SOURCE, importId: { in: plates } },
-    select: { id: true, plate: true, customerId: true, importId: true },
-  })
-  const existingVehicleImportIds = new Set(existingVehicles.map(v => v.importId).filter(Boolean) as string[])
   const plateToVehicleId  = new Map<string, string>()
   const plateToCustomerId = new Map<string, string>()
-  for (const v of existingVehicles) {
-    plateToVehicleId.set(v.plate, v.id)
-    plateToCustomerId.set(v.plate, v.customerId)
+
+  const vehicleEntries = Array.from(vehicleMap.entries()).filter(([, veh]) =>
+    veh.customerExternalNo != null && externalNoToCustomerId.has(veh.customerExternalNo)
+  )
+  vehicleStats.skipped = vehicleMap.size - vehicleEntries.length
+
+  if (vehicleEntries.length > 0) {
+    const plates = vehicleEntries.map(([plate]) => plate)
+
+    const existingVehs = await prisma.vehicle.findMany({
+      where: { organizationId: orgId, importSource: IMPORT_SOURCE, importId: { in: plates } },
+      select: { id: true, plate: true, customerId: true, importId: true },
+    })
+    const existingVehSet = new Set(
+      existingVehs.map(v => v.importId).filter((v): v is string => v != null),
+    )
+    for (const v of existingVehs) {
+      plateToVehicleId.set(v.plate, v.id)
+      plateToCustomerId.set(v.plate, v.customerId)
+    }
+
+    try {
+      const vals = vehicleEntries.map(([plate, veh]) => {
+        const customerId = externalNoToCustomerId.get(veh.customerExternalNo!)!
+        return Prisma.sql`(gen_random_uuid()::text, ${orgId}, ${customerId}, ${plate}, ${veh.make}, ${veh.model}, ${veh.year}, ${'NESHER'}, ${plate}, NOW(), NOW())`
+      })
+
+      const rows = await prisma.$queryRaw<{ id: string; plate: string; customer_id: string }[]>`
+        INSERT INTO "Vehicle"
+          (id, "organizationId", "customerId", plate, make, model, year, "importSource", "importId", "createdAt", "updatedAt")
+        VALUES ${Prisma.join(vals)}
+        ON CONFLICT ("plate", "organizationId")
+        DO UPDATE SET
+          make           = EXCLUDED.make,
+          model          = EXCLUDED.model,
+          year           = EXCLUDED.year,
+          "customerId"   = EXCLUDED."customerId",
+          "importSource" = EXCLUDED."importSource",
+          "importId"     = EXCLUDED."importId",
+          "updatedAt"    = NOW()
+        RETURNING id, plate, "customerId" AS customer_id
+      `
+
+      for (const row of rows) {
+        plateToVehicleId.set(row.plate, row.id)
+        plateToCustomerId.set(row.plate, row.customer_id)
+        if (existingVehSet.has(row.plate)) vehicleStats.updated++
+        else                               vehicleStats.created++
+      }
+    } catch (e) {
+      errors.push(`שגיאה בייבוא רכבים: ${e instanceof Error ? e.message : String(e)}`)
+      vehicleStats.failed += vehicleEntries.length
+    }
   }
 
-  await parallel(Array.from(vehicleMap.entries()), async ([plate, veh]) => {
-    const customerId = veh.customerExternalNo
-      ? externalNoToCustomerId.get(veh.customerExternalNo)
-      : undefined
-
-    if (!customerId) { vehicleStats.skipped++; return }
-
-    try {
-      const saved = await prisma.vehicle.upsert({
-        where: {
-          organizationId_importSource_importId: {
-            organizationId: orgId,
-            importSource:   IMPORT_SOURCE,
-            importId:       plate,
-          },
-        },
-        create: {
-          organizationId: orgId,
-          customerId,
-          plate:          veh.plate,
-          make:           veh.make,
-          model:          veh.model,
-          year:           veh.year,
-          importSource:   IMPORT_SOURCE,
-          importId:       plate,
-        },
-        update: { plate: veh.plate, make: veh.make, model: veh.model, year: veh.year },
-        select: { id: true, customerId: true },
-      })
-      plateToVehicleId.set(plate, saved.id)
-      plateToCustomerId.set(plate, saved.customerId)
-      if (existingVehicleImportIds.has(plate)) vehicleStats.updated++
-      else                                      vehicleStats.created++
-    } catch (e) {
-      vehicleStats.failed++
-      errors.push(`רכב ${plate}: ${e instanceof Error ? e.message : String(e)}`)
-    }
-  })
-
-  // ── Phase 3: Work Orders ──────────────────────────────────────────────────
+  // ── Phase 3: Batch work order upsert ──────────────────────────────────────
   const workOrderStats = { created: 0, updated: 0, skipped: 0, failed: 0 }
 
-  const importIds = cards.map(c => String(c.card_id))
-  const existingWOs = await prisma.workOrder.findMany({
-    where: { organizationId: orgId, importSource: IMPORT_SOURCE, importId: { in: importIds } },
-    select: { importId: true },
+  const validCards = cards.filter(card => {
+    const plate = (card.car_no ?? '').trim().toUpperCase()
+    return plate && plateToVehicleId.has(plate) && plateToCustomerId.has(plate)
   })
-  const existingWOImportIds = new Set(existingWOs.map(w => w.importId).filter(Boolean) as string[])
+  workOrderStats.skipped = cards.length - validCards.length
 
-  await parallel(cards, async (card) => {
-    const importId   = String(card.card_id)
-    const plate      = (card.car_no ?? '').trim().toUpperCase()
-    const vehicleId  = plate ? plateToVehicleId.get(plate)  : undefined
-    const customerId = plate ? plateToCustomerId.get(plate) : undefined
+  if (validCards.length > 0) {
+    const importIds = validCards.map(c => String(c.card_id))
 
-    if (!vehicleId || !customerId) { workOrderStats.skipped++; return }
-
-    const receivedAt  = toSafeDate(card.open_dt)
-    const completedAt = toSafeDate(card.close_dt)
-    const status      = resolveStatus(card.card_st, completedAt)
-    const partsTotal  = toDecimal(card.part_tot)
-    const laborTotal  = toDecimal(card.work_tot)
-    const laborRate   = toDecimal(card.tarif)
-    const totalPrice  = new Decimal(partsTotal.toNumber() + laborTotal.toNumber())
+    const existingWOs = await prisma.workOrder.findMany({
+      where: { organizationId: orgId, importSource: IMPORT_SOURCE, importId: { in: importIds } },
+      select: { importId: true },
+    })
+    const existingWOSet = new Set(
+      existingWOs.map(w => w.importId).filter((v): v is string => v != null),
+    )
 
     try {
-      await prisma.workOrder.upsert({
-        where: {
-          organizationId_importSource_importId: {
-            organizationId: orgId,
-            importSource:   IMPORT_SOURCE,
-            importId,
-          },
-        },
-        create: {
-          organizationId:  orgId,
-          customerId,
-          vehicleId,
-          workOrderNumber: String(card.card_no ?? importId),
-          status,
-          partsTotal,
-          laborTotal,
-          laborRate,
-          totalPrice,
-          mileage:         card.card_km != null ? Math.round(card.card_km) : undefined,
-          notes:           card.car_desc?.trim() || undefined,
-          receivedAt:      receivedAt  ?? undefined,
-          completedAt:     completedAt ?? undefined,
-          advisorName:     card.adviser?.trim()   || undefined,
-          driverName:      card.drv_name?.trim()  || undefined,
-          driverPhone:     card.drv_phone?.trim() || undefined,
-          importSource:    IMPORT_SOURCE,
-          importId,
-        },
-        update: {
-          status,
-          partsTotal,
-          laborTotal,
-          laborRate,
-          totalPrice,
-          mileage:     card.card_km != null ? Math.round(card.card_km) : undefined,
-          receivedAt:  receivedAt  ?? undefined,
-          completedAt: completedAt ?? undefined,
-        },
-        select: { id: true },
+      // workOrderNumber = importId (card_id) to guarantee uniqueness across batches
+      const vals = validCards.map(card => {
+        const importId    = String(card.card_id)
+        const plate       = (card.car_no ?? '').trim().toUpperCase()
+        const vehicleId   = plateToVehicleId.get(plate)!
+        const customerId  = plateToCustomerId.get(plate)!
+        const receivedAt  = toSafeDate(card.open_dt)
+        const completedAt = toSafeDate(card.close_dt)
+        const status      = resolveStatus(card.card_st, completedAt)
+        const partsTotal  = card.part_tot ?? 0
+        const laborTotal  = card.work_tot ?? 0
+        const laborRate   = card.tarif ?? 0
+        const totalPrice  = partsTotal + laborTotal
+        const mileage     = card.card_km != null ? Math.round(card.card_km) : null
+        const notes       = card.car_desc?.trim() || null
+        const advisorName = card.adviser?.trim() || null
+        const driverName  = card.drv_name?.trim() || null
+        const driverPhone = card.drv_phone?.trim() || null
+
+        return Prisma.sql`(
+          gen_random_uuid()::text,
+          ${orgId},
+          ${customerId},
+          ${vehicleId},
+          ${importId},
+          ${status as string}::"WorkOrderStatus",
+          ${partsTotal},
+          ${laborTotal},
+          ${laborRate},
+          ${totalPrice},
+          ${mileage},
+          ${notes},
+          ${receivedAt},
+          ${completedAt},
+          ${advisorName},
+          ${driverName},
+          ${driverPhone},
+          ${'NESHER'},
+          ${importId},
+          NOW(),
+          NOW()
+        )`
       })
-      if (existingWOImportIds.has(importId)) workOrderStats.updated++
-      else                                    workOrderStats.created++
+
+      const rows = await prisma.$queryRaw<{ id: string; import_id: string }[]>`
+        INSERT INTO "WorkOrder" (
+          id, "organizationId", "customerId", "vehicleId",
+          "workOrderNumber", status,
+          "partsTotal", "laborTotal", "laborRate", "totalPrice",
+          mileage, notes,
+          "receivedAt", "completedAt",
+          "advisorName", "driverName", "driverPhone",
+          "importSource", "importId",
+          "createdAt", "updatedAt"
+        )
+        VALUES ${Prisma.join(vals)}
+        ON CONFLICT ("organizationId", "importSource", "importId")
+        DO UPDATE SET
+          status        = EXCLUDED.status,
+          "partsTotal"  = EXCLUDED."partsTotal",
+          "laborTotal"  = EXCLUDED."laborTotal",
+          "laborRate"   = EXCLUDED."laborRate",
+          "totalPrice"  = EXCLUDED."totalPrice",
+          mileage       = EXCLUDED.mileage,
+          "receivedAt"  = EXCLUDED."receivedAt",
+          "completedAt" = EXCLUDED."completedAt",
+          "updatedAt"   = NOW()
+        RETURNING id, "importId" AS import_id
+      `
+
+      for (const row of rows) {
+        if (existingWOSet.has(row.import_id)) workOrderStats.updated++
+        else                                   workOrderStats.created++
+      }
     } catch (e) {
-      workOrderStats.failed++
-      errors.push(`כרטיסייה ${card.card_no} (id=${importId}): ${e instanceof Error ? e.message : String(e)}`)
+      errors.push(`שגיאה בייבוא כרטיסיות: ${e instanceof Error ? e.message : String(e)}`)
+      workOrderStats.failed += validCards.length
     }
-  })
+  }
 
   return {
     errors,
