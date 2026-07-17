@@ -6,6 +6,7 @@ import {
   Wifi, WifiOff, RefreshCw, Database, Users, Car, FileText,
   ChevronDown, ChevronUp, PlayCircle, CheckCircle2, XCircle,
   Loader2, AlertTriangle, Eye, BarChart2, ExternalLink,
+  Upload, TriangleAlert,
 } from 'lucide-react'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -39,6 +40,13 @@ interface EntityStats {
   errors:       number
 }
 
+interface ImportStats {
+  created: number
+  updated: number
+  skipped: number
+  failed:  number
+}
+
 interface DryRunResult {
   dryRun:     true
   durationMs: number
@@ -55,12 +63,30 @@ interface DryRunResult {
   errors: string[]
 }
 
+interface ImportResult {
+  dryRun:     false
+  durationMs: number
+  stats: {
+    customers:  ImportStats
+    vehicles:   ImportStats
+    workOrders: ImportStats
+  }
+  errors: string[]
+}
+
 type PreviewTable = 'ca_clients' | 'ca_cars' | 'ca_cards'
 
 type RunState =
   | { phase: 'idle' }
   | { phase: 'running' }
   | { phase: 'done'; result: DryRunResult }
+  | { phase: 'error'; error: string }
+
+type ImportState =
+  | { phase: 'idle' }
+  | { phase: 'confirm' }
+  | { phase: 'running' }
+  | { phase: 'done'; result: ImportResult }
   | { phase: 'error'; error: string }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -83,6 +109,10 @@ export function NesherImportPanel() {
   // Dry-run state
   const [runState,   setRunState]   = useState<RunState>({ phase: 'idle' })
   const [dryRunOpen, setDryRunOpen] = useState(false)
+
+  // Real import state
+  const [importState,   setImportState]   = useState<ImportState>({ phase: 'idle' })
+  const [importOpen,    setImportOpen]    = useState(false)
 
   // ── Actions ──────────────────────────────────────────────────────────────────
 
@@ -136,6 +166,25 @@ export function NesherImportPanel() {
       setDryRunOpen(true)
     } catch (e) {
       setRunState({ phase: 'error', error: e instanceof Error ? e.message : String(e) })
+    }
+  }
+
+  const runRealImport = async () => {
+    setImportState({ phase: 'running' })
+    try {
+      const r = await fetch('/api/nesher/import', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ dryRun: false }),
+      })
+      const data = await r.json()
+      if (!r.ok) throw new Error(data.error ?? 'שגיאה לא ידועה')
+      setImportState({ phase: 'done', result: data })
+      setImportOpen(true)
+      // Reset status counts so user sees updated numbers
+      setStatus(null)
+    } catch (e) {
+      setImportState({ phase: 'error', error: e instanceof Error ? e.message : String(e) })
     }
   }
 
@@ -291,6 +340,96 @@ export function NesherImportPanel() {
             </button>
 
             {dryRunOpen && <DryRunResults result={runState.result} />}
+          </div>
+        )}
+      </div>
+
+      {/* ── 4. Real import section ─────────────────────────────────────────── */}
+      <div className="bg-[#1a1d27] border border-emerald-500/20 rounded-xl overflow-hidden">
+        <div className="flex items-center justify-between px-5 py-4">
+          <div className="flex items-center gap-2">
+            <Upload size={15} className="text-emerald-400" />
+            <span className="font-semibold text-sm">ייבוא אמיתי ל-GarageOS</span>
+            <span className="text-xs bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full">
+              כותב לבסיס הנתונים
+            </span>
+          </div>
+          {importState.phase === 'idle' && (
+            <button
+              onClick={() => setImportState({ phase: 'confirm' })}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-emerald-600 text-white text-xs font-medium hover:bg-emerald-500 transition-all"
+            >
+              <Upload size={13} /> הרץ ייבוא
+            </button>
+          )}
+          {importState.phase === 'confirm' && (
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setImportState({ phase: 'idle' })}
+                className="px-3 py-1.5 rounded-lg border border-[#2e3147] text-[#8892a4] text-xs hover:text-[#e2e8f0] transition-all"
+              >
+                ביטול
+              </button>
+              <button
+                onClick={runRealImport}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-emerald-600 text-white text-xs font-medium hover:bg-emerald-500 transition-all"
+              >
+                <CheckCircle2 size={13} /> אישור — הרץ
+              </button>
+            </div>
+          )}
+          {importState.phase === 'running' && (
+            <div className="flex items-center gap-2 text-emerald-400 text-xs">
+              <Loader2 size={13} className="animate-spin" /> מייבא...
+            </div>
+          )}
+          {importState.phase === 'done' && (
+            <button
+              onClick={() => { setImportState({ phase: 'idle' }); setImportOpen(false) }}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#252836] border border-[#2e3147] text-[#8892a4] text-xs hover:text-[#e2e8f0] transition-all"
+            >
+              <Upload size={13} /> הרץ שוב
+            </button>
+          )}
+        </div>
+
+        {importState.phase === 'confirm' && (
+          <div className="border-t border-[#2e3147] px-5 py-4">
+            <div className="flex items-start gap-2 text-amber-300 text-xs">
+              <TriangleAlert size={13} className="mt-0.5 shrink-0" />
+              <span>
+                הפעולה תכתוב נתונים מ-NESHER ל-GarageOS בפועל.
+                לקוחות, רכבים וכרטיסיות חדשים ייווצרו. רשומות קיימות יעודכנו.
+                מומלץ להריץ Dry Run קודם.
+              </span>
+            </div>
+          </div>
+        )}
+
+        {importState.phase === 'error' && (
+          <div className="border-t border-[#2e3147] px-5 py-4">
+            <div className="flex items-center gap-2 text-red-400 text-xs">
+              <XCircle size={14} /> {importState.error}
+            </div>
+          </div>
+        )}
+
+        {importState.phase === 'done' && (
+          <div className="border-t border-[#2e3147]">
+            <button
+              onClick={() => setImportOpen(o => !o)}
+              className="w-full flex items-center justify-between px-5 py-3 hover:bg-[#252836] transition-all"
+            >
+              <div className="flex items-center gap-2 text-xs text-[#8892a4]">
+                <CheckCircle2 size={13} className="text-emerald-400" />
+                הושלם ב-{(importState.result.durationMs / 1000).toFixed(1)}שנ׳
+                &nbsp;·&nbsp;
+                {importState.result.stats.customers.created + importState.result.stats.vehicles.created + importState.result.stats.workOrders.created} רשומות חדשות
+              </div>
+              {importOpen ? <ChevronUp size={13} className="text-[#8892a4]" /> : <ChevronDown size={13} className="text-[#8892a4]" />}
+            </button>
+
+            {importOpen && <ImportResults result={importState.result} />}
           </div>
         )}
       </div>
@@ -468,6 +607,56 @@ function SampleRow({ data }: { data: Record<string, unknown> }) {
           <span className="text-[#c8d0e0]">{String(v)}</span>
         </span>
       ))}
+    </div>
+  )
+}
+
+function ImportResults({ result }: { result: ImportResult }) {
+  const rows = [
+    { label: 'לקוחות',    stats: result.stats.customers  },
+    { label: 'רכבים',     stats: result.stats.vehicles   },
+    { label: 'כרטיסיות', stats: result.stats.workOrders },
+  ]
+
+  return (
+    <div className="px-5 pb-5 space-y-4">
+      <div className="overflow-x-auto rounded-lg border border-[#2e3147]">
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="bg-[#252836] border-b border-[#2e3147]">
+              <th className="px-4 py-2 text-right font-medium text-[#8892a4]">ישות</th>
+              <th className="px-4 py-2 text-center font-medium text-emerald-400">נוצרו</th>
+              <th className="px-4 py-2 text-center font-medium text-blue-400">עודכנו</th>
+              <th className="px-4 py-2 text-center font-medium text-[#8892a4]">דולגו</th>
+              <th className="px-4 py-2 text-center font-medium text-red-400">שגיאות</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map(({ label, stats }) => (
+              <tr key={label} className="border-b border-[#2e3147] last:border-0">
+                <td className="px-4 py-2.5 font-medium">{label}</td>
+                <td className="px-4 py-2.5 text-center text-emerald-400 font-mono">{stats.created.toLocaleString()}</td>
+                <td className="px-4 py-2.5 text-center text-blue-400 font-mono">{stats.updated.toLocaleString()}</td>
+                <td className="px-4 py-2.5 text-center text-[#8892a4] font-mono">{stats.skipped.toLocaleString()}</td>
+                <td className="px-4 py-2.5 text-center text-red-400 font-mono">{stats.failed.toLocaleString()}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {result.errors.length > 0 && (
+        <div>
+          <p className="text-xs font-medium text-amber-400 mb-2">
+            הערות / שגיאות ({result.errors.length})
+          </p>
+          <div className="space-y-1 max-h-48 overflow-y-auto">
+            {result.errors.map((e, i) => (
+              <p key={i} className="text-xs text-amber-300 bg-amber-500/5 border border-amber-500/10 rounded px-3 py-1.5">{e}</p>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

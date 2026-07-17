@@ -1,7 +1,7 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { requireOrg }               from '@/lib/org'
-import { hanesherConfigured }        from '@/lib/mssql'
-import { dryRunNesherImport }        from '@/lib/nesher/importer'
+import { NextRequest, NextResponse }               from 'next/server'
+import { requireOrg }                             from '@/lib/org'
+import { hanesherConfigured }                     from '@/lib/mssql'
+import { dryRunNesherImport, runNesherImport }    from '@/lib/nesher/importer'
 
 export const dynamic = 'force-dynamic'
 
@@ -18,16 +18,14 @@ export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => ({}))
   const { dryRun, limit } = body as { dryRun?: boolean; limit?: number }
 
-  if (!dryRun) {
-    return NextResponse.json(
-      { error: 'ייבוא אמיתי עדיין לא זמין. השתמש ב-dryRun: true.' },
-      { status: 501 },
-    )
-  }
-
   try {
-    const result = await dryRunNesherImport(orgId, limit)
-    return NextResponse.json(result)
+    if (dryRun) {
+      const result = await dryRunNesherImport(orgId, limit)
+      return NextResponse.json(result)
+    } else {
+      const result = await runNesherImport(orgId, limit)
+      return NextResponse.json(result)
+    }
   } catch (e) {
     return NextResponse.json(
       { error: e instanceof Error ? e.message : String(e) },
