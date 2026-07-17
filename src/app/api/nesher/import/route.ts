@@ -5,7 +5,7 @@ import { dryRunNesherImport, runNesherImport }          from '@/lib/nesher/impor
 import { runNesherImportViaConnector }                  from '@/lib/nesher/connector-importer'
 
 export const dynamic    = 'force-dynamic'
-export const maxDuration = 60  // seconds — needed for bulk upserts on Hobby plan
+export const maxDuration = 60
 
 export async function POST(req: NextRequest) {
   const { orgId, memberRole } = await requireOrg()
@@ -14,24 +14,32 @@ export async function POST(req: NextRequest) {
   }
 
   const body = await req.json().catch(() => ({}))
-  const { dryRun, limit } = body as { dryRun?: boolean; limit?: number }
+  const { dryRun, limit, cursor = null, page = 1 } = body as {
+    dryRun?:  boolean
+    limit?:   number
+    cursor?:  number | null
+    page?:    number
+  }
 
   try {
     if (dryRun) {
-      // Dry-run requires direct MSSQL access
       if (!hanesherConfigured()) {
         return NextResponse.json({ error: 'חיבור ישיר ל-SQL לא מוגדר' }, { status: 503 })
       }
       const result = await dryRunNesherImport(orgId, limit)
       return NextResponse.json(result)
-    } else {
-      // Real import: prefer direct MSSQL if configured, fall back to REST connector
-      const useConnector = !hanesherConfigured() || !!process.env.NESHER_CONNECTOR_URL
-      const result = useConnector
-        ? await runNesherImportViaConnector(orgId)
-        : await runNesherImport(orgId, limit)
+    }
+
+    // Real import: prefer connector path
+    const useConnector = !hanesherConfigured() || !!process.env.NESHER_CONNECTOR_URL
+    if (useConnector) {
+      // Cursor-based: process ONE page per call, return nextCursor for continuation
+      const result = await runNesherImportViaConnector(orgId, cursor ?? null, page)
       return NextResponse.json(result)
     }
+
+    const result = await runNesherImport(orgId, limit)
+    return NextResponse.json(result)
   } catch (e) {
     return NextResponse.json(
       { error: e instanceof Error ? e.message : String(e) },

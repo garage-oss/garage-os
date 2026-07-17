@@ -28,5 +28,10 @@
   "rewrites": [],
   "redirects": [],
 
-  "crons": []
+  "crons": [
+    {
+      "path":     "/api/cron/sync-nesher",
+      "schedule": "0 */6 * * *"
+    }
+  ]
 }

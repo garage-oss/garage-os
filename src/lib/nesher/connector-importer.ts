@@ -3,11 +3,13 @@
  *
  * Architecture: Vercel → REST connector → SQL Server (NESHER).
  * Direct SQL Server (port 1433) is never used from this code path.
+ * GarageOS performs ONLY read (GET) requests against the connector.
+ * The connector performs ONLY SELECT queries against NESHER SQL Server.
+ * No INSERT / UPDATE / DELETE / ALTER ever touches the NESHER database.
  *
- * The connector is capped at 100 records per request. Customers and vehicles
- * are aggregated from workorder rows (the only endpoint available).
- * Customer phone is not available via the connector — stored as '000000000'.
- * Vehicle importId uses the plate number instead of the SQL LINE_ID.
+ * Pagination: the connector supports cursor-based paging via ?before={card_id}.
+ * Each call to runNesherImportViaConnector processes ONE page (≤100 records)
+ * and returns nextCursor so the caller can continue with the next page.
  */
 
 import { prisma }          from '@/lib/prisma'
@@ -16,10 +18,19 @@ import { Decimal }          from '@prisma/client/runtime/library'
 import type { ImportResult } from './importer'
 
 const IMPORT_SOURCE   = 'NESHER'
+const PAGE_SIZE       = 100
 const NULL_DATE_FLOOR = new Date('1900-01-01').getTime()
-const UPSERT_BATCH    = 10   // concurrent Prisma upserts per round
+const UPSERT_BATCH    = 10
 
-// ─── Connector types ──────────────────────────────────────────────────────────
+// ─── Public result type ───────────────────────────────────────────────────────
+
+export interface ImportBatchResult extends ImportResult {
+  nextCursor: number | null  // null ⇒ no more pages
+  done:       boolean
+  page:       number
+}
+
+// ─── Connector wire types ─────────────────────────────────────────────────────
 
 interface ConnectorCard {
   card_id:   string | number
@@ -44,14 +55,26 @@ interface ConnectorCard {
   drv_phone: string | null
 }
 
-async function fetchAllConnectorCards(): Promise<ConnectorCard[]> {
+interface ConnectorPage {
+  data:      ConnectorCard[]
+  count:     number
+  remaining: number
+  minCardId: number | null
+}
+
+// ─── Connector fetch ──────────────────────────────────────────────────────────
+
+async function fetchConnectorPage(cursor: number | null): Promise<ConnectorPage> {
   const baseUrl = process.env.NESHER_CONNECTOR_URL
   const apiKey  = process.env.NESHER_CONNECTOR_API_KEY
   if (!baseUrl) throw new Error('NESHER_CONNECTOR_URL לא מוגדר')
   if (!apiKey)  throw new Error('NESHER_CONNECTOR_API_KEY לא מוגדר')
 
-  // Connector caps at 100 records per request regardless of limit value
-  const res = await fetch(`${baseUrl}/api/workorders?limit=100`, {
+  const params = cursor
+    ? `limit=${PAGE_SIZE}&before=${cursor}`
+    : `limit=${PAGE_SIZE}`
+
+  const res = await fetch(`${baseUrl}/api/workorders?${params}`, {
     headers: { 'x-api-key': apiKey },
     signal:  AbortSignal.timeout(30_000),
     cache:   'no-store',
@@ -62,7 +85,18 @@ async function fetchAllConnectorCards(): Promise<ConnectorCard[]> {
   }
 
   const json = await res.json()
-  return Array.isArray(json) ? json : (json.rows ?? json.data ?? [])
+  const data: ConnectorCard[] = Array.isArray(json)
+    ? json
+    : (json.data ?? json.rows ?? [])
+
+  return {
+    data,
+    count:     data.length,
+    remaining: json.remaining ?? 0,
+    minCardId: json.minCardId ?? (data.length > 0
+      ? Math.min(...data.map((c: ConnectorCard) => Number(c.card_id)))
+      : null),
+  }
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -85,42 +119,34 @@ function resolveStatus(cardSt: string | null | undefined, completedAt: Date | nu
   return WorkOrderStatus.PENDING
 }
 
-async function parallel<T, R>(
-  items:   T[],
-  handler: (item: T) => Promise<R>,
-): Promise<R[]> {
+async function parallel<T, R>(items: T[], handler: (item: T) => Promise<R>): Promise<R[]> {
   const results: R[] = []
   for (let i = 0; i < items.length; i += UPSERT_BATCH) {
-    const batch = items.slice(i, i + UPSERT_BATCH)
-    const batchResults = await Promise.all(batch.map(handler))
+    const batchResults = await Promise.all(items.slice(i, i + UPSERT_BATCH).map(handler))
     results.push(...batchResults)
   }
   return results
 }
 
-// ─── Main export ──────────────────────────────────────────────────────────────
+// ─── Per-batch upsert ─────────────────────────────────────────────────────────
 
-export async function runNesherImportViaConnector(orgId: string): Promise<ImportResult> {
-  const t0     = Date.now()
+async function processBatch(
+  orgId: string,
+  cards: ConnectorCard[],
+): Promise<Omit<ImportResult, 'dryRun' | 'durationMs'>> {
   const errors: string[] = []
 
-  // ── Fetch all workorders from connector ─────────────────────────────────────
-  const cards = await fetchAllConnectorCards()
-
-  // ── Aggregate unique customers (by cli_no) ─────────────────────────────────
+  // Aggregate unique customers from this batch
   const customerMap = new Map<string, { name: string; email: string | null }>()
   for (const c of cards) {
     if (c.cli_no == null || !c.cli_name?.trim()) continue
     const key = String(c.cli_no)
     if (!customerMap.has(key)) {
-      customerMap.set(key, {
-        name:  c.cli_name.trim(),
-        email: c.cli_email?.trim() || null,
-      })
+      customerMap.set(key, { name: c.cli_name.trim(), email: c.cli_email?.trim() || null })
     }
   }
 
-  // ── Aggregate unique vehicles (by plate) ────────────────────────────────────
+  // Aggregate unique vehicles from this batch
   interface AggVehicle {
     plate:              string
     make:               string
@@ -144,23 +170,21 @@ export async function runNesherImportViaConnector(orgId: string): Promise<Import
     }
   }
 
-  // ── Phase 1: Customers (parallel batches) ───────────────────────────────────
+  // ── Phase 1: Customers ────────────────────────────────────────────────────
   const customerStats = { created: 0, updated: 0, skipped: 0, failed: 0 }
 
-  const preExistingCustomers = await prisma.customer.findMany({
-    where:  { organizationId: orgId, importSource: IMPORT_SOURCE },
+  const customerExternalNos = Array.from(customerMap.keys())
+  const existing = await prisma.customer.findMany({
+    where: { organizationId: orgId, importSource: IMPORT_SOURCE, importId: { in: customerExternalNos } },
     select: { id: true, externalNo: true, importId: true },
   })
-  const existingCustomerImportIds = new Set(
-    preExistingCustomers.map(c => c.importId).filter(Boolean) as string[],
-  )
+  const existingCustomerImportIds = new Set(existing.map(c => c.importId).filter(Boolean) as string[])
   const externalNoToCustomerId = new Map<string, string>()
-  for (const c of preExistingCustomers) {
+  for (const c of existing) {
     if (c.externalNo) externalNoToCustomerId.set(c.externalNo, c.id)
   }
 
-  const customerEntries = Array.from(customerMap.entries())
-  await parallel(customerEntries, async ([externalNo, cust]) => {
+  await parallel(Array.from(customerMap.entries()), async ([externalNo, cust]) => {
     try {
       const saved = await prisma.customer.upsert({
         where: {
@@ -179,50 +203,40 @@ export async function runNesherImportViaConnector(orgId: string): Promise<Import
           importId:       externalNo,
           externalNo,
         },
-        update: {
-          name:       cust.name,
-          email:      cust.email ?? undefined,
-          externalNo,
-        },
+        update: { name: cust.name, email: cust.email ?? undefined, externalNo },
         select: { id: true },
       })
-
       externalNoToCustomerId.set(externalNo, saved.id)
       if (existingCustomerImportIds.has(externalNo)) customerStats.updated++
       else                                            customerStats.created++
     } catch (e) {
       customerStats.failed++
-      errors.push(`לקוח ${cust.name} (cli_no=${externalNo}): ${e instanceof Error ? e.message : String(e)}`)
+      errors.push(`לקוח ${cust.name}: ${e instanceof Error ? e.message : String(e)}`)
     }
   })
 
-  // ── Phase 2: Vehicles (parallel batches) ────────────────────────────────────
+  // ── Phase 2: Vehicles ─────────────────────────────────────────────────────
   const vehicleStats = { created: 0, updated: 0, skipped: 0, failed: 0 }
 
-  const preExistingVehicles = await prisma.vehicle.findMany({
-    where:  { organizationId: orgId, importSource: IMPORT_SOURCE },
+  const plates = Array.from(vehicleMap.keys())
+  const existingVehicles = await prisma.vehicle.findMany({
+    where: { organizationId: orgId, importSource: IMPORT_SOURCE, importId: { in: plates } },
     select: { id: true, plate: true, customerId: true, importId: true },
   })
-  const existingVehicleImportIds = new Set(
-    preExistingVehicles.map(v => v.importId).filter(Boolean) as string[],
-  )
+  const existingVehicleImportIds = new Set(existingVehicles.map(v => v.importId).filter(Boolean) as string[])
   const plateToVehicleId  = new Map<string, string>()
   const plateToCustomerId = new Map<string, string>()
-  for (const v of preExistingVehicles) {
+  for (const v of existingVehicles) {
     plateToVehicleId.set(v.plate, v.id)
     plateToCustomerId.set(v.plate, v.customerId)
   }
 
-  const vehicleEntries = Array.from(vehicleMap.entries())
-  await parallel(vehicleEntries, async ([plate, veh]) => {
+  await parallel(Array.from(vehicleMap.entries()), async ([plate, veh]) => {
     const customerId = veh.customerExternalNo
       ? externalNoToCustomerId.get(veh.customerExternalNo)
       : undefined
 
-    if (!customerId) {
-      vehicleStats.skipped++
-      return
-    }
+    if (!customerId) { vehicleStats.skipped++; return }
 
     try {
       const saved = await prisma.vehicle.upsert({
@@ -243,15 +257,9 @@ export async function runNesherImportViaConnector(orgId: string): Promise<Import
           importSource:   IMPORT_SOURCE,
           importId:       plate,
         },
-        update: {
-          plate: veh.plate,
-          make:  veh.make,
-          model: veh.model,
-          year:  veh.year,
-        },
+        update: { plate: veh.plate, make: veh.make, model: veh.model, year: veh.year },
         select: { id: true, customerId: true },
       })
-
       plateToVehicleId.set(plate, saved.id)
       plateToCustomerId.set(plate, saved.customerId)
       if (existingVehicleImportIds.has(plate)) vehicleStats.updated++
@@ -262,16 +270,15 @@ export async function runNesherImportViaConnector(orgId: string): Promise<Import
     }
   })
 
-  // ── Phase 3: Work Orders (parallel batches) ──────────────────────────────────
+  // ── Phase 3: Work Orders ──────────────────────────────────────────────────
   const workOrderStats = { created: 0, updated: 0, skipped: 0, failed: 0 }
 
-  const preExistingWOs = await prisma.workOrder.findMany({
-    where:  { organizationId: orgId, importSource: IMPORT_SOURCE },
+  const importIds = cards.map(c => String(c.card_id))
+  const existingWOs = await prisma.workOrder.findMany({
+    where: { organizationId: orgId, importSource: IMPORT_SOURCE, importId: { in: importIds } },
     select: { importId: true },
   })
-  const existingWOImportIds = new Set(
-    preExistingWOs.map(w => w.importId).filter(Boolean) as string[],
-  )
+  const existingWOImportIds = new Set(existingWOs.map(w => w.importId).filter(Boolean) as string[])
 
   await parallel(cards, async (card) => {
     const importId   = String(card.card_id)
@@ -279,10 +286,7 @@ export async function runNesherImportViaConnector(orgId: string): Promise<Import
     const vehicleId  = plate ? plateToVehicleId.get(plate)  : undefined
     const customerId = plate ? plateToCustomerId.get(plate) : undefined
 
-    if (!vehicleId || !customerId) {
-      workOrderStats.skipped++
-      return
-    }
+    if (!vehicleId || !customerId) { workOrderStats.skipped++; return }
 
     const receivedAt  = toSafeDate(card.open_dt)
     const completedAt = toSafeDate(card.close_dt)
@@ -327,13 +331,12 @@ export async function runNesherImportViaConnector(orgId: string): Promise<Import
           laborTotal,
           laborRate,
           totalPrice,
-          mileage:         card.card_km != null ? Math.round(card.card_km) : undefined,
-          receivedAt:      receivedAt  ?? undefined,
-          completedAt:     completedAt ?? undefined,
+          mileage:     card.card_km != null ? Math.round(card.card_km) : undefined,
+          receivedAt:  receivedAt  ?? undefined,
+          completedAt: completedAt ?? undefined,
         },
         select: { id: true },
       })
-
       if (existingWOImportIds.has(importId)) workOrderStats.updated++
       else                                    workOrderStats.created++
     } catch (e) {
@@ -343,13 +346,52 @@ export async function runNesherImportViaConnector(orgId: string): Promise<Import
   })
 
   return {
-    dryRun:     false,
-    durationMs: Date.now() - t0,
+    errors,
     stats: {
       customers:  customerStats,
       vehicles:   vehicleStats,
       workOrders: workOrderStats,
     },
-    errors,
+  }
+}
+
+// ─── Main export: single-page cursor import ───────────────────────────────────
+
+export async function runNesherImportViaConnector(
+  orgId:  string,
+  cursor: number | null = null,
+  page    = 1,
+): Promise<ImportBatchResult> {
+  const t0 = Date.now()
+
+  const connectorPage = await fetchConnectorPage(cursor)
+
+  if (connectorPage.data.length === 0) {
+    return {
+      dryRun:     false,
+      durationMs: Date.now() - t0,
+      done:       true,
+      nextCursor: null,
+      page,
+      errors:     [],
+      stats: {
+        customers:  { created: 0, updated: 0, skipped: 0, failed: 0 },
+        vehicles:   { created: 0, updated: 0, skipped: 0, failed: 0 },
+        workOrders: { created: 0, updated: 0, skipped: 0, failed: 0 },
+      },
+    }
+  }
+
+  const batchResult = await processBatch(orgId, connectorPage.data)
+
+  const isLastPage = connectorPage.data.length < PAGE_SIZE || connectorPage.remaining === 0
+
+  return {
+    dryRun:     false,
+    durationMs: Date.now() - t0,
+    done:       isLastPage,
+    nextCursor: isLastPage ? null : (connectorPage.minCardId ?? null),
+    page,
+    ...batchResult,
   }
 }
