@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse }                    from 'next/server'
 import { prisma }                                       from '@/lib/prisma'
-import { normalizePhone, phoneVariants, verifyOtpCode } from '@/lib/sms'
+import { normalizePhone, phoneVariants, verifyOtpCode,
+         isTestMode, TEST_PHONE, TEST_OTP }             from '@/lib/sms'
 import { createCustomerSession, getSessionCookieConfig } from '@/lib/customer-auth'
 import { checkRateLimit }                               from '@/lib/rate-limit'
 
@@ -58,6 +59,54 @@ export async function POST(req: NextRequest) {
       newAttempts >= LOCK_AFTER ? ERR_LOCKED : ERR_INVALID,
       { status: 401 }
     )
+  }
+
+  // ── Test mode: create/find a dedicated test customer and skip real lookup ──
+  if (isTestMode() && normalized === normalizePhone(TEST_PHONE)) {
+    await prisma.customerOtp.update({ where: { id: otp.id }, data: { usedAt: new Date() } })
+
+    const firstOrg = await prisma.organization.findFirst({ select: { id: true } })
+    const orgId    = firstOrg?.id ?? ''
+
+    // Find or create the test customer (idempotent across logins)
+    let testCustomer = await prisma.customer.findFirst({
+      where:  { importSource: 'test', importId: 'test-portal-user' },
+      select: { id: true },
+    })
+
+    if (!testCustomer) {
+      testCustomer = await prisma.customer.create({
+        data: {
+          name:           'לקוח בדיקה',
+          phone:          TEST_PHONE,
+          organizationId: orgId,
+          importSource:   'test',
+          importId:       'test-portal-user',
+        },
+        select: { id: true },
+      })
+      // Give the test customer one vehicle so the full booking flow is testable
+      await prisma.vehicle.create({
+        data: {
+          customerId:     testCustomer.id,
+          organizationId: orgId,
+          plate:          '12-345-67',
+          make:           'טויוטה',
+          model:          'קאמרי',
+          year:           2020,
+          mileage:        50000,
+        },
+      })
+    }
+
+    const sessionToken = await createCustomerSession(testCustomer.id)
+    const cfg          = getSessionCookieConfig(sessionToken)
+    const res          = NextResponse.json({ success: true })
+    res.cookies.set(cfg.name, cfg.value, {
+      httpOnly: cfg.httpOnly, secure: cfg.secure,
+      sameSite: cfg.sameSite, path:   cfg.path, maxAge: cfg.maxAge,
+    })
+    return res
   }
 
   // ── Find customer — check for duplicate phones ────────────────────────────

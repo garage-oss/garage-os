@@ -16,6 +16,16 @@ export function isDemoMode(): boolean {
   )
 }
 
+// ─── Test mode ────────────────────────────────────────────────────────────────
+// Enabled via CUSTOMER_PORTAL_TEST_MODE=true (works in any environment).
+// The test phone always gets OTP TEST_OTP without real SMS or pilot-allowlist check.
+export const TEST_PHONE = '0500000000'
+export const TEST_OTP   = '123456'
+
+export function isTestMode(): boolean {
+  return process.env.CUSTOMER_PORTAL_TEST_MODE === 'true'
+}
+
 // ─── OTP hashing ─────────────────────────────────────────────────────────────
 // Stores HMAC-SHA256(secret, "phone:code") — never the plaintext code.
 // The secret makes stored hashes useless without the key even if the DB leaks.

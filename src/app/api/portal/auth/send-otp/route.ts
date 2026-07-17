@@ -2,7 +2,8 @@ import { NextRequest, NextResponse }          from 'next/server'
 import { prisma }                             from '@/lib/prisma'
 import { normalizePhone, phoneVariants,
          hashOtpCode, generateOtpCode,
-         getSmsProvider, isDemoMode }         from '@/lib/sms'
+         getSmsProvider, isDemoMode,
+         isTestMode, TEST_PHONE, TEST_OTP }   from '@/lib/sms'
 import { checkRateLimit }                     from '@/lib/rate-limit'
 
 export const dynamic = 'force-dynamic'
@@ -37,11 +38,12 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  const demo = isDemoMode()
+  const demo      = isDemoMode()
+  const testPhone = isTestMode() && normalized === normalizePhone(TEST_PHONE)
 
-  // ── Pilot allowlist check (production only) ────────────────────────────────
-  // In demo mode skip the check so developers can test any phone number.
-  if (!demo) {
+  // ── Pilot allowlist check ──────────────────────────────────────────────────
+  // Skipped in demo mode and for the designated test phone in test mode.
+  if (!demo && !testPhone) {
     const variants = phoneVariants(normalized)
     const pilotOk  = await prisma.customerPilot.findFirst({
       where: {
@@ -62,7 +64,8 @@ export async function POST(req: NextRequest) {
   }
 
   // ── Generate and hash OTP ─────────────────────────────────────────────────
-  const code     = demo ? '123456' : generateOtpCode()
+  // Demo: always 123456 (shown on screen). Test phone: always TEST_OTP (123456).
+  const code     = testPhone ? TEST_OTP : demo ? '123456' : generateOtpCode()
   const codeHash = hashOtpCode(normalized, code)
 
   await prisma.customerOtp.deleteMany({ where: { phone: normalized } })
@@ -74,8 +77,8 @@ export async function POST(req: NextRequest) {
     },
   })
 
-  // ── Send (skipped in demo mode) ───────────────────────────────────────────
-  if (!demo) {
+  // ── Send SMS (skipped in demo mode and for test phone) ────────────────────
+  if (!demo && !testPhone) {
     const result = await getSmsProvider().sendOtp(normalized, code)
     if (!result.success) {
       console.error('[send-otp] SMS provider error:', result.error)
@@ -83,9 +86,9 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // In demo mode expose the code for screen display — never in production.
+  // Expose OTP in response for demo/test so it can be shown on screen.
   const payload: Record<string, unknown> = { ...GENERIC }
-  if (demo) payload.demo = code
+  if (demo || testPhone) payload.demo = code
 
   return NextResponse.json(payload)
 }
