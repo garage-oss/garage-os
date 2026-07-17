@@ -4,7 +4,8 @@ import { hanesherConfigured }                           from '@/lib/mssql'
 import { dryRunNesherImport, runNesherImport }          from '@/lib/nesher/importer'
 import { runNesherImportViaConnector }                  from '@/lib/nesher/connector-importer'
 
-export const dynamic = 'force-dynamic'
+export const dynamic    = 'force-dynamic'
+export const maxDuration = 60  // seconds — needed for bulk upserts on Hobby plan
 
 export async function POST(req: NextRequest) {
   const { orgId, memberRole } = await requireOrg()

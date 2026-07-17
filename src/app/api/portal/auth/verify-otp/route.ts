@@ -61,45 +61,55 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  // ── Test mode: create/find a dedicated test customer and skip real lookup ──
+  // ── Test mode: prefer a real NESHER customer for demo data ───────────────
   if (isTestMode() && normalized === normalizePhone(TEST_PHONE)) {
     await prisma.customerOtp.update({ where: { id: otp.id }, data: { usedAt: new Date() } })
 
     const firstOrg = await prisma.organization.findFirst({ select: { id: true } })
     const orgId    = firstOrg?.id ?? ''
 
-    // Find or create the test customer (idempotent across logins)
-    let testCustomer = await prisma.customer.findFirst({
-      where:  { importSource: 'test', importId: 'test-portal-user' },
-      select: { id: true },
+    // If NESHER data has been imported, show a real customer instead of the placeholder
+    const nesherCustomer = await prisma.customer.findFirst({
+      where:   { organizationId: orgId, importSource: 'NESHER' },
+      orderBy: { createdAt: 'asc' },
+      select:  { id: true },
     })
 
-    if (!testCustomer) {
-      testCustomer = await prisma.customer.create({
-        data: {
-          name:           'לקוח בדיקה',
-          phone:          TEST_PHONE,
-          organizationId: orgId,
-          importSource:   'test',
-          importId:       'test-portal-user',
-        },
+    let targetCustomer: { id: string } | null = nesherCustomer
+
+    if (!targetCustomer) {
+      // No NESHER data yet — fall back to the synthetic test customer
+      targetCustomer = await prisma.customer.findFirst({
+        where:  { importSource: 'test', importId: 'test-portal-user' },
         select: { id: true },
       })
-      // Give the test customer one vehicle so the full booking flow is testable
-      await prisma.vehicle.create({
-        data: {
-          customerId:     testCustomer.id,
-          organizationId: orgId,
-          plate:          '12-345-67',
-          make:           'טויוטה',
-          model:          'קאמרי',
-          year:           2020,
-          mileage:        50000,
-        },
-      })
+
+      if (!targetCustomer) {
+        targetCustomer = await prisma.customer.create({
+          data: {
+            name:           'לקוח בדיקה',
+            phone:          TEST_PHONE,
+            organizationId: orgId,
+            importSource:   'test',
+            importId:       'test-portal-user',
+          },
+          select: { id: true },
+        })
+        await prisma.vehicle.create({
+          data: {
+            customerId:     targetCustomer.id,
+            organizationId: orgId,
+            plate:          '12-345-67',
+            make:           'טויוטה',
+            model:          'קאמרי',
+            year:           2020,
+            mileage:        50000,
+          },
+        })
+      }
     }
 
-    const sessionToken = await createCustomerSession(testCustomer.id)
+    const sessionToken = await createCustomerSession(targetCustomer.id)
     const cfg          = getSessionCookieConfig(sessionToken)
     const res          = NextResponse.json({ success: true })
     res.cookies.set(cfg.name, cfg.value, {

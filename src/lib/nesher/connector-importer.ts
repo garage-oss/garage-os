@@ -1,27 +1,29 @@
 /**
  * NESHER import via REST connector (port 4000).
  *
- * Used when direct MSSQL (port 1433) is unavailable (e.g., from Vercel cloud).
- * Aggregates unique customers and vehicles from the workorders endpoint,
- * then upserts all three entity types into GarageOS.
+ * Architecture: Vercel → REST connector → SQL Server (NESHER).
+ * Direct SQL Server (port 1433) is never used from this code path.
  *
- * Customer phone is unavailable via the connector — stored as '000000000'.
- * Vehicle importId uses the plate number (car_no) instead of LINE_ID.
+ * The connector is capped at 100 records per request. Customers and vehicles
+ * are aggregated from workorder rows (the only endpoint available).
+ * Customer phone is not available via the connector — stored as '000000000'.
+ * Vehicle importId uses the plate number instead of the SQL LINE_ID.
  */
 
-import { prisma }         from '@/lib/prisma'
-import { WorkOrderStatus } from '@prisma/client'
-import { Decimal }         from '@prisma/client/runtime/library'
+import { prisma }          from '@/lib/prisma'
+import { WorkOrderStatus }  from '@prisma/client'
+import { Decimal }          from '@prisma/client/runtime/library'
 import type { ImportResult } from './importer'
 
 const IMPORT_SOURCE   = 'NESHER'
 const NULL_DATE_FLOOR = new Date('1900-01-01').getTime()
+const UPSERT_BATCH    = 10   // concurrent Prisma upserts per round
 
 // ─── Connector types ──────────────────────────────────────────────────────────
 
 interface ConnectorCard {
-  card_id:   string
-  card_no:   number
+  card_id:   string | number
+  card_no:   number | null
   open_dt:   string | null
   close_dt:  string | null
   car_no:    string | null
@@ -48,9 +50,11 @@ async function fetchAllConnectorCards(): Promise<ConnectorCard[]> {
   if (!baseUrl) throw new Error('NESHER_CONNECTOR_URL לא מוגדר')
   if (!apiKey)  throw new Error('NESHER_CONNECTOR_API_KEY לא מוגדר')
 
-  const res = await fetch(`${baseUrl}/api/workorders?limit=100000`, {
+  // Connector caps at 100 records per request regardless of limit value
+  const res = await fetch(`${baseUrl}/api/workorders?limit=100`, {
     headers: { 'x-api-key': apiKey },
-    signal:  AbortSignal.timeout(120_000),
+    signal:  AbortSignal.timeout(30_000),
+    cache:   'no-store',
   })
   if (!res.ok) {
     const text = await res.text().catch(() => '')
@@ -58,7 +62,7 @@ async function fetchAllConnectorCards(): Promise<ConnectorCard[]> {
   }
 
   const json = await res.json()
-  return Array.isArray(json) ? json : (json.data ?? [])
+  return Array.isArray(json) ? json : (json.rows ?? json.data ?? [])
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -81,13 +85,26 @@ function resolveStatus(cardSt: string | null | undefined, completedAt: Date | nu
   return WorkOrderStatus.PENDING
 }
 
+async function parallel<T, R>(
+  items:   T[],
+  handler: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const results: R[] = []
+  for (let i = 0; i < items.length; i += UPSERT_BATCH) {
+    const batch = items.slice(i, i + UPSERT_BATCH)
+    const batchResults = await Promise.all(batch.map(handler))
+    results.push(...batchResults)
+  }
+  return results
+}
+
 // ─── Main export ──────────────────────────────────────────────────────────────
 
 export async function runNesherImportViaConnector(orgId: string): Promise<ImportResult> {
   const t0     = Date.now()
   const errors: string[] = []
 
-  // ── Fetch all workorders ────────────────────────────────────────────────────
+  // ── Fetch all workorders from connector ─────────────────────────────────────
   const cards = await fetchAllConnectorCards()
 
   // ── Aggregate unique customers (by cli_no) ─────────────────────────────────
@@ -127,7 +144,7 @@ export async function runNesherImportViaConnector(orgId: string): Promise<Import
     }
   }
 
-  // ── Phase 1: Customers ──────────────────────────────────────────────────────
+  // ── Phase 1: Customers (parallel batches) ───────────────────────────────────
   const customerStats = { created: 0, updated: 0, skipped: 0, failed: 0 }
 
   const preExistingCustomers = await prisma.customer.findMany({
@@ -142,7 +159,8 @@ export async function runNesherImportViaConnector(orgId: string): Promise<Import
     if (c.externalNo) externalNoToCustomerId.set(c.externalNo, c.id)
   }
 
-  for (const [externalNo, cust] of Array.from(customerMap.entries())) {
+  const customerEntries = Array.from(customerMap.entries())
+  await parallel(customerEntries, async ([externalNo, cust]) => {
     try {
       const saved = await prisma.customer.upsert({
         where: {
@@ -176,9 +194,9 @@ export async function runNesherImportViaConnector(orgId: string): Promise<Import
       customerStats.failed++
       errors.push(`לקוח ${cust.name} (cli_no=${externalNo}): ${e instanceof Error ? e.message : String(e)}`)
     }
-  }
+  })
 
-  // ── Phase 2: Vehicles ────────────────────────────────────────────────────────
+  // ── Phase 2: Vehicles (parallel batches) ────────────────────────────────────
   const vehicleStats = { created: 0, updated: 0, skipped: 0, failed: 0 }
 
   const preExistingVehicles = await prisma.vehicle.findMany({
@@ -195,14 +213,15 @@ export async function runNesherImportViaConnector(orgId: string): Promise<Import
     plateToCustomerId.set(v.plate, v.customerId)
   }
 
-  for (const [plate, veh] of Array.from(vehicleMap.entries())) {
+  const vehicleEntries = Array.from(vehicleMap.entries())
+  await parallel(vehicleEntries, async ([plate, veh]) => {
     const customerId = veh.customerExternalNo
       ? externalNoToCustomerId.get(veh.customerExternalNo)
       : undefined
 
     if (!customerId) {
       vehicleStats.skipped++
-      continue
+      return
     }
 
     try {
@@ -241,9 +260,9 @@ export async function runNesherImportViaConnector(orgId: string): Promise<Import
       vehicleStats.failed++
       errors.push(`רכב ${plate}: ${e instanceof Error ? e.message : String(e)}`)
     }
-  }
+  })
 
-  // ── Phase 3: Work Orders ─────────────────────────────────────────────────────
+  // ── Phase 3: Work Orders (parallel batches) ──────────────────────────────────
   const workOrderStats = { created: 0, updated: 0, skipped: 0, failed: 0 }
 
   const preExistingWOs = await prisma.workOrder.findMany({
@@ -254,15 +273,15 @@ export async function runNesherImportViaConnector(orgId: string): Promise<Import
     preExistingWOs.map(w => w.importId).filter(Boolean) as string[],
   )
 
-  for (const card of cards) {
-    const importId    = String(card.card_id)
-    const plate       = (card.car_no ?? '').trim().toUpperCase()
-    const vehicleId   = plate ? plateToVehicleId.get(plate)  : undefined
-    const customerId  = plate ? plateToCustomerId.get(plate) : undefined
+  await parallel(cards, async (card) => {
+    const importId   = String(card.card_id)
+    const plate      = (card.car_no ?? '').trim().toUpperCase()
+    const vehicleId  = plate ? plateToVehicleId.get(plate)  : undefined
+    const customerId = plate ? plateToCustomerId.get(plate) : undefined
 
     if (!vehicleId || !customerId) {
       workOrderStats.skipped++
-      continue
+      return
     }
 
     const receivedAt  = toSafeDate(card.open_dt)
@@ -286,7 +305,7 @@ export async function runNesherImportViaConnector(orgId: string): Promise<Import
           organizationId:  orgId,
           customerId,
           vehicleId,
-          workOrderNumber: String(card.card_no),
+          workOrderNumber: String(card.card_no ?? importId),
           status,
           partsTotal,
           laborTotal,
@@ -321,7 +340,7 @@ export async function runNesherImportViaConnector(orgId: string): Promise<Import
       workOrderStats.failed++
       errors.push(`כרטיסייה ${card.card_no} (id=${importId}): ${e instanceof Error ? e.message : String(e)}`)
     }
-  }
+  })
 
   return {
     dryRun:     false,

@@ -1,11 +1,10 @@
-import { NextResponse }              from 'next/server'
-import { requireOrg }               from '@/lib/org'
-import { testConnection, hanesherConfigured } from '@/lib/mssql'
-import { countTable }                from '@/lib/nesher/queries'
-import { prisma }                    from '@/lib/prisma'
-import { IMPORT_SOURCE }             from '@/lib/nesher/mapper'
+import { NextResponse }  from 'next/server'
+import { requireOrg }   from '@/lib/org'
+import { prisma }       from '@/lib/prisma'
 
 export const dynamic = 'force-dynamic'
+
+const IMPORT_SOURCE = 'NESHER'
 
 export async function GET() {
   const { orgId, memberRole } = await requireOrg()
@@ -13,39 +12,54 @@ export async function GET() {
     return NextResponse.json({ error: 'מנהל בלבד' }, { status: 403 })
   }
 
-  if (!hanesherConfigured()) {
-    return NextResponse.json({
-      configured: false,
-      connected:  false,
-      error: 'פרטי חיבור לא הוגדרו. הגדר HANESHER_DB_* ב-.env',
-    })
-  }
+  const connectorUrl = process.env.NESHER_CONNECTOR_URL  ?? ''
+  const connectorKey = process.env.NESHER_CONNECTOR_API_KEY ?? ''
+  const configured   = !!(connectorUrl && connectorKey)
 
-  const conn = await testConnection()
-  if (!conn.ok) {
-    return NextResponse.json({ configured: true, connected: false, error: conn.error })
-  }
+  let connected    = false
+  let connectorMeta: Record<string, unknown> | null = null
+  let sourceCount: number | null = null
 
-  const [clientCount, carCount, cardCount] = await Promise.all([
-    countTable('ca_clients').catch(() => -1),
-    countTable('ca_cars').catch(() => -1),
-    countTable('ca_cards').catch(() => -1),
-  ])
+  if (configured) {
+    try {
+      const healthRes = await fetch(`${connectorUrl}/health`, {
+        headers: { 'x-api-key': connectorKey },
+        signal:  AbortSignal.timeout(5000),
+        cache:   'no-store',
+      })
+      if (healthRes.ok) {
+        connected     = true
+        connectorMeta = await healthRes.json()
+      }
+    } catch { /* connector unreachable */ }
+
+    if (connected) {
+      try {
+        const woRes = await fetch(`${connectorUrl}/api/workorders?limit=100`, {
+          headers: { 'x-api-key': connectorKey },
+          signal:  AbortSignal.timeout(15000),
+          cache:   'no-store',
+        })
+        if (woRes.ok) {
+          const body   = await woRes.json()
+          const rows   = body.rows ?? body.data ?? []
+          sourceCount  = rows.length
+        }
+      } catch { /* count unavailable */ }
+    }
+  }
 
   const [importedCustomers, importedVehicles, importedWorkOrders] = await Promise.all([
     prisma.customer.count({ where: { organizationId: orgId, importSource: IMPORT_SOURCE } }),
-    prisma.vehicle.count({ where: { organizationId: orgId, importSource: IMPORT_SOURCE } }),
+    prisma.vehicle.count({  where: { organizationId: orgId, importSource: IMPORT_SOURCE } }),
     prisma.workOrder.count({ where: { organizationId: orgId, importSource: IMPORT_SOURCE } }),
   ])
 
   return NextResponse.json({
-    configured: true,
-    connected:  true,
-    counts: {
-      ca_clients: clientCount,
-      ca_cars:    carCount,
-      ca_cards:   cardCount,
-    },
+    configured,
+    connected,
+    connectorMeta,
+    sourceCount,
     imported: {
       customers:  importedCustomers,
       vehicles:   importedVehicles,
