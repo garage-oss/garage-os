@@ -49,7 +49,55 @@ export async function DELETE() {
     details:           [] as string[],
   }
 
-  // ── 1. Work orders: seeded IDs + test importSource ─────────────────────────
+  // ── 1. Child records without cascade (must go before WorkOrder/Customer) ─────
+
+  // Quotes + their children (QuoteItem, QuotePortalResponse cascade from Quote)
+  await prisma.quote.deleteMany({
+    where: {
+      organizationId: orgId,
+      OR: [
+        { customerId: { in: DEMO_CUSTOMER_IDS } },
+        { workOrderId: { in: DEMO_WO_IDS } },
+      ],
+    },
+  })
+
+  // Invoices belonging to demo customers or demo work orders
+  await prisma.invoice.deleteMany({
+    where: {
+      organizationId: orgId,
+      OR: [
+        { customerId: { in: DEMO_CUSTOMER_IDS } },
+        { workOrderId: { in: DEMO_WO_IDS } },
+      ],
+    },
+  })
+
+  // Comm logs for demo customers (customerId nullable, no cascade)
+  await prisma.commLog.deleteMany({
+    where: {
+      organizationId: orgId,
+      customerId: { in: DEMO_CUSTOMER_IDS },
+    },
+  })
+
+  // Service bookings for demo customers
+  await prisma.serviceBooking.deleteMany({
+    where: {
+      organizationId: orgId,
+      customerId: { in: DEMO_CUSTOMER_IDS },
+    },
+  })
+
+  // Appointments for demo customers
+  await prisma.appointment.deleteMany({
+    where: {
+      organizationId: orgId,
+      customerId: { in: DEMO_CUSTOMER_IDS },
+    },
+  })
+
+  // ── 3. Work orders: seeded IDs + test importSource ─────────────────────────
   const woResult = await prisma.workOrder.deleteMany({
     where: {
       organizationId: orgId,
@@ -64,7 +112,7 @@ export async function DELETE() {
   stats.workOrdersDeleted += woResult.count
   if (woResult.count > 0) stats.details.push(`נמחקו ${woResult.count} כרטיסיות דמו`)
 
-  // ── 2. Vehicles: seeded IDs + test importSource + owned by demo customers ──
+  // ── 3. Vehicles: seeded IDs + test importSource + owned by demo customers ──
   const vehResult = await prisma.vehicle.deleteMany({
     where: {
       organizationId: orgId,
@@ -78,7 +126,7 @@ export async function DELETE() {
   stats.vehiclesDeleted += vehResult.count
   if (vehResult.count > 0) stats.details.push(`נמחקו ${vehResult.count} רכבי דמו`)
 
-  // ── 3. Customers: seeded IDs + test importSource ───────────────────────────
+  // ── 4. Customers: seeded IDs + test importSource ───────────────────────────
   const custResult = await prisma.customer.deleteMany({
     where: {
       organizationId: orgId,
