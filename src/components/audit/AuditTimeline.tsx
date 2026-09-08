@@ -7,7 +7,7 @@ import type { LucideIcon } from 'lucide-react'
 import {
   Plus, Pencil, Trash2, LogIn, LogOut, Mail, CheckCircle2,
   XCircle, Shield, UserMinus, UserCheck, UserX, Key, Upload,
-  FileX, Settings, User,
+  FileX, Settings, User, FileText, Eye, Download,
 } from 'lucide-react'
 
 interface AuditEntry {
@@ -39,6 +39,12 @@ const ACTION_ICONS: Record<AuditAction, LucideIcon> = {
   FILE_UPLOADED:            Upload,
   FILE_DELETED:             FileX,
   SETTINGS_UPDATED:         Settings,
+  DOCUMENT_UPLOADED:        FileText,
+  DOCUMENT_VIEWED:          Eye,
+  DOCUMENT_DOWNLOADED:      Download,
+  DOCUMENT_DELETED:         FileX,
+  DOCUMENT_VERIFIED:        CheckCircle2,
+  DOCUMENT_REPLACED:        Upload,
 }
 
 interface AuditTimelineProps {

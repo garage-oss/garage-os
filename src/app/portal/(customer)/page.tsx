@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { requireCustomerSession } from '@/lib/customer-auth'
 import { prisma }                 from '@/lib/prisma'
 import { nesherCustomer }         from '@/lib/nesher-connector'
+import DocReminderBanner          from '@/components/portal/DocReminderBanner'
 import { Car, CalendarPlus, CalendarClock, ChevronLeft, Phone } from 'lucide-react'
 
 export const dynamic = 'force-dynamic'
@@ -186,6 +187,11 @@ export default async function CustomerPortalHome() {
               ))}
             </div>
           </div>
+        )}
+
+        {/* Document reminder — show only when customer has at least one GarageOS vehicle */}
+        {vehicles.length > 0 && (
+          <DocReminderBanner vehicleId={vehicles[0].id} />
         )}
 
         {/* Upcoming appointment */}

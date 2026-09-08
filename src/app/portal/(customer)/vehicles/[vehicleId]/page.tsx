@@ -53,7 +53,9 @@ export default async function VehicleDetailPage({ params }: Props) {
     select:  { id: true, quoteNumber: true, status: true, totalPrice: true, createdAt: true },
   })
 
-  const hasHistory = workOrders.length > 0 || (nesherHistory && nesherHistory.length > 0)
+  const hasHistory      = workOrders.length > 0 || (nesherHistory && nesherHistory.length > 0)
+  // Show vehicle documents only when storage is configured (S3 in prod, local in dev)
+  const vehicleDocsEnabled = process.env.STORAGE_PROVIDER === 's3' || process.env.NODE_ENV !== 'production'
 
   return (
     <div className="max-w-lg mx-auto" dir="rtl">
@@ -111,6 +113,19 @@ export default async function VehicleDetailPage({ params }: Props) {
               <p className="text-slate-500 text-sm">{quotes.length} הצעות</p>
             </div>
           </Link>
+
+          {vehicleDocsEnabled && (
+            <Link
+              href={`/portal/vehicles/${vehicle.id}/documents`}
+              className="flex items-center gap-4 bg-white border-2 border-slate-100 text-slate-800 px-5 py-5 rounded-2xl shadow-sm active:scale-[0.98] transition-transform"
+            >
+              <span className="text-3xl shrink-0">📄</span>
+              <div>
+                <p className="font-black text-lg leading-tight">מסמכי הרכב</p>
+                <p className="text-slate-500 text-sm">רישיון, ביטוח ומסמכים נוספים</p>
+              </div>
+            </Link>
+          )}
         </div>
 
         {/* Service history */}

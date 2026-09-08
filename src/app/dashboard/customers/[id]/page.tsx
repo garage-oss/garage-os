@@ -1,11 +1,12 @@
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
-import { ChevronRight, Phone, Mail, MapPin, Car, Wrench, Plus, Pencil } from 'lucide-react'
+import { ChevronRight, Phone, Mail, MapPin, Car, Wrench, Plus, Pencil, Rocket } from 'lucide-react'
 import { getCustomer, calcTotalSpent } from '@/lib/customers'
 import { requireOrg } from '@/lib/org'
 import { VehicleCard } from '@/components/vehicles/VehicleCard'
 import { StatusBadge } from '@/components/work-orders/StatusBadge'
 import { DeleteButton } from '@/components/ui/DeleteButton'
+import { PilotToggleButton } from '@/components/customers/PilotToggleButton'
 import { deleteCustomer } from '@/app/actions/customers'
 import { formatCurrency, formatDate, toNum } from '@/lib/utils'
 
@@ -85,6 +86,27 @@ export default async function CustomerProfilePage({ params }: Props) {
           <p className="text-sm text-[#8892a4] leading-relaxed">{customer.notes}</p>
         </div>
       )}
+
+      {/* Pilot section */}
+      <div className="bg-[#1a1d27] border border-[#2e3147] rounded-xl p-4 mb-4">
+        <div className="flex items-center justify-between gap-4 flex-wrap">
+          <div className="flex items-center gap-2">
+            <Rocket size={16} className={customer.pilotRecord && !customer.pilotRecord.disabledAt ? 'text-emerald-400' : 'text-[#8892a4]'} />
+            <div>
+              <div className="text-sm font-semibold text-[#e2e8f0]">פיילוט לקוח</div>
+              <div className="text-xs text-[#8892a4]">
+                {customer.pilotRecord && !customer.pilotRecord.disabledAt
+                  ? `פעיל מאז ${formatDate(customer.pilotRecord.addedAt)}`
+                  : 'לקוח זה אינו משתתף בפיילוט'}
+              </div>
+            </div>
+          </div>
+          <PilotToggleButton
+            customerId={customer.id}
+            pilotEnabled={!!(customer.pilotRecord && !customer.pilotRecord.disabledAt)}
+          />
+        </div>
+      </div>
 
       {/* Vehicles */}
       <div className="mb-4">

@@ -22,7 +22,7 @@ export const viewport: Viewport = {
 // ─── Metadata ─────────────────────────────────────────────────────────────────
 
 export const metadata: Metadata = {
-  metadataBase: new URL(process.env.NEXTAUTH_URL ?? 'http://localhost:3000'),
+  metadataBase: new URL(process.env.NEXTAUTH_URL || 'http://localhost:3000'),
 
   title: {
     default:  'GarageOS — מערכת ניהול מוסך',

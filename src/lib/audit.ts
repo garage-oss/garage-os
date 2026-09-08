@@ -124,6 +124,12 @@ export const ACTION_LABELS: Record<AuditAction, string> = {
   FILE_UPLOADED:            'העלה קובץ',
   FILE_DELETED:             'מחק קובץ',
   SETTINGS_UPDATED:         'עדכן הגדרות',
+  DOCUMENT_UPLOADED:        'העלה מסמך',
+  DOCUMENT_VIEWED:          'צפה במסמך',
+  DOCUMENT_DOWNLOADED:      'הוריד מסמך',
+  DOCUMENT_DELETED:         'מחק מסמך',
+  DOCUMENT_VERIFIED:        'אימת מסמך',
+  DOCUMENT_REPLACED:        'החליף מסמך',
 }
 
 export const ACTION_COLORS: Record<AuditAction, string> = {
@@ -143,6 +149,12 @@ export const ACTION_COLORS: Record<AuditAction, string> = {
   FILE_UPLOADED:            'text-sky-400 bg-sky-500/10',
   FILE_DELETED:             'text-red-400 bg-red-500/10',
   SETTINGS_UPDATED:         'text-[#6366f1] bg-[#6366f1]/10',
+  DOCUMENT_UPLOADED:        'text-sky-400 bg-sky-500/10',
+  DOCUMENT_VIEWED:          'text-slate-400 bg-slate-500/10',
+  DOCUMENT_DOWNLOADED:      'text-indigo-400 bg-indigo-500/10',
+  DOCUMENT_DELETED:         'text-red-400 bg-red-500/10',
+  DOCUMENT_VERIFIED:        'text-emerald-400 bg-emerald-500/10',
+  DOCUMENT_REPLACED:        'text-amber-400 bg-amber-500/10',
 }
 
 export const ENTITY_TYPE_LABELS: Record<string, string> = {

@@ -21,3 +21,9 @@ playwright-report/
 # OS
 .DS_Store
 Thumbs.db
+
+.vercel
+.env*
+
+# Local document uploads (dev only — production uses S3)
+doc-storage/

@@ -16,6 +16,7 @@ export type CustomerProfile = Prisma.CustomerGetPayload<{
       orderBy: { createdAt: 'desc' }
     }
     _count: { select: { vehicles: true; workOrders: true } }
+    pilotRecord: true
   }
 }>
 
@@ -57,6 +58,7 @@ export async function getCustomer(orgId: string, id: string): Promise<CustomerPr
         orderBy: { createdAt: 'desc' },
       },
       _count: { select: { vehicles: true, workOrders: true } },
+      pilotRecord: true,
     },
   })
 }
