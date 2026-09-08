@@ -2,7 +2,7 @@
 
 import { useRouter } from 'next/navigation'
 import { useState }  from 'react'
-import { Rocket, RocketIcon } from 'lucide-react'
+import { Rocket } from 'lucide-react'
 
 interface Props {
   customerId:   string
@@ -45,7 +45,7 @@ export function PilotToggleButton({ customerId, pilotEnabled }: Props) {
         </>
       ) : (
         <>
-          <RocketIcon size={15} className="shrink-0 opacity-40" />
+          <Rocket size={15} className="shrink-0 opacity-40" />
           {loading ? '...' : 'הפעל פיילוט'}
         </>
       )}
