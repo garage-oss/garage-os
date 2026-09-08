@@ -21,6 +21,7 @@ function getInitials(name: string) {
 export const dynamic = 'force-dynamic'
 
 export default async function CustomerProfilePage({ params }: Props) {
+  try {
   const { orgId } = await requireOrg()
   const customer = await getCustomer(orgId, params.id)
   if (!customer) notFound()
@@ -180,4 +181,7 @@ export default async function CustomerProfilePage({ params }: Props) {
       </div>
     </div>
   )
+  } catch (err) {
+    return <pre style={{color:'red',padding:'2rem',whiteSpace:'pre-wrap'}}>{String(err)}{'\n'}{(err as Error)?.stack}</pre>
+  }
 }
