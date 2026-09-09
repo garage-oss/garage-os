@@ -3,6 +3,7 @@ import { getCustomerSession }                            from '@/lib/customer-au
 import { prisma }                                        from '@/lib/prisma'
 import { createAuditLog }                                from '@/lib/audit'
 import { validateDocUpload, buildDocPath, docStorageWrite } from '@/lib/doc-storage'
+// storagePath is never returned to the client — only internal db field
 import { AuditAction, DocumentType, ExtractionStatus, Prisma } from '@prisma/client'
 
 export const dynamic = 'force-dynamic'
@@ -84,8 +85,8 @@ export async function POST(
   const validation = validateDocUpload(file.type, file.size)
   if (!validation.valid) return NextResponse.json({ error: validation.error }, { status: 400 })
 
-  const buffer      = Buffer.from(await file.arrayBuffer())
-  const storagePath = buildDocPath(ctx.organizationId, vehicle.id, file.type)
+  const buffer = Buffer.from(await file.arrayBuffer())
+  const { path: storagePath } = buildDocPath(ctx.organizationId, ctx.customerId, vehicle.id, file.type, file.name)
 
   await docStorageWrite(storagePath, buffer, file.type)
 

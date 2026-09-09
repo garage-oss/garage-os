@@ -2,7 +2,7 @@ import { NextRequest, NextResponse }                from 'next/server'
 import { getCustomerSession }                       from '@/lib/customer-auth'
 import { prisma }                                   from '@/lib/prisma'
 import { createAuditLog }                           from '@/lib/audit'
-import { docStorageRead, docStoragePresignUrl, isS3 } from '@/lib/doc-storage'
+import { docStorageRead, docStoragePresignUrl, isRemoteStorage } from '@/lib/doc-storage'
 import { AuditAction }                              from '@prisma/client'
 
 export const dynamic = 'force-dynamic'
@@ -28,8 +28,8 @@ export async function GET(
     entityLabel: doc.documentType,
   }).catch(() => null)
 
-  if (isS3) {
-    const url = await docStoragePresignUrl(doc.storagePath, 60)
+  if (isRemoteStorage) {
+    const url = await docStoragePresignUrl(doc.storagePath, 120)
     return NextResponse.redirect(url!)
   }
 
