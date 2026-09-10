@@ -20,51 +20,44 @@ export async function POST(req: NextRequest) {
 
   if (!supabaseUrl || !serviceKey) {
     return NextResponse.json({
-      error: 'SUPABASE_URL and SUPABASE_SERVICE_KEY must be set in Vercel environment',
-      supabaseUrl:  !!supabaseUrl,
-      serviceKey:   !!serviceKey,
-      bucket,
+      error: 'SUPABASE_URL and SUPABASE_SERVICE_KEY must be set',
+      hasUrl: !!supabaseUrl,
+      hasKey: !!serviceKey,
     }, { status: 503 })
   }
 
-  // Diagnostic: show sanitized URL info (project ref only, never the key)
-  const urlDiag = {
-    startsWithHttps: supabaseUrl.startsWith('https://'),
-    endsWithSlash:   supabaseUrl.endsWith('/'),
-    projRef:         supabaseUrl.replace(/^https?:\/\//, '').split('.')[0].slice(0, 20),
-    keyLength:       serviceKey.length,
-    keyPrefix:       serviceKey.slice(0, 6),
-  }
-
-  // Normalize URL: strip trailing slash
+  // Normalize: strip trailing slash
   const normalUrl = supabaseUrl.replace(/\/+$/, '')
+
+  // Quick connectivity check before using the JS client
+  let pingStatus = 0
+  try {
+    const r = await fetch(`${normalUrl}/storage/v1/bucket`, {
+      headers: { Authorization: `Bearer ${serviceKey}`, apikey: serviceKey },
+    })
+    pingStatus = r.status
+  } catch { pingStatus = -1 }
+
+  if (pingStatus === -1) {
+    return NextResponse.json({
+      error: 'Supabase host unreachable (fetch failed). Check SUPABASE_URL.',
+      pingStatus,
+    }, { status: 503 })
+  }
 
   const sb = createClient(normalUrl, serviceKey, {
     auth: { persistSession: false, autoRefreshToken: false },
   })
 
-  const results: string[] = []
+  const results: string[] = [`ping: HTTP ${pingStatus}`]
 
-  // Verify storage endpoint directly first (normalUrl contains no secrets)
-  const storageUrl = `${normalUrl}/storage/v1/bucket`
-  let rawStatus = 0
-  let rawBody = ''
-  try {
-    const r = await fetch(storageUrl, { headers: { Authorization: `Bearer ${serviceKey}`, apikey: serviceKey } })
-    rawStatus = r.status
-    rawBody = await r.text()
-  } catch (e: unknown) { rawBody = String(e) }
-
-  // Check if bucket exists
+  // List existing buckets
   const { data: buckets, error: listErr } = await sb.storage.listBuckets()
   if (listErr) {
     return NextResponse.json({
       error: `listBuckets: ${listErr.message}`,
-      urlDiag,
-      normalUrl,           // safe: no credentials
-      storageUrl,          // safe: no credentials
-      rawStatus,
-      rawBody: rawBody.slice(0, 400),
+      pingStatus,
+      results,
     }, { status: 500 })
   }
 
@@ -72,16 +65,15 @@ export async function POST(req: NextRequest) {
   if (existing) {
     results.push(`bucket '${bucket}': already exists (public=${existing.public})`)
     if (existing.public) {
-      // Update to private
       const { error: updateErr } = await sb.storage.updateBucket(bucket, { public: false })
-      if (updateErr) results.push(`  → update to private: FAILED — ${updateErr.message}`)
-      else results.push(`  → updated to private: ok`)
+      results.push(updateErr
+        ? `  → update to private: FAILED — ${updateErr.message}`
+        : `  → updated to private: ok`)
     }
   } else {
-    // Create private bucket
     const { error: createErr } = await sb.storage.createBucket(bucket, {
-      public:          false,
-      fileSizeLimit:   10 * 1024 * 1024, // 10 MB
+      public:           false,
+      fileSizeLimit:    10 * 1024 * 1024,
       allowedMimeTypes: ['image/jpeg', 'image/png', 'application/pdf'],
     })
     if (createErr) {
@@ -90,46 +82,24 @@ export async function POST(req: NextRequest) {
     results.push(`bucket '${bucket}': created (private)`)
   }
 
-  // Verify bucket is private
-  const { data: updated } = await sb.storage.getBucket(bucket)
-  results.push(`bucket public=${updated?.public ?? 'unknown'} (should be false)`)
+  // Verify private
+  const { data: bkt } = await sb.storage.getBucket(bucket)
+  results.push(`bucket.public=${bkt?.public ?? 'unknown'} (expected: false)`)
 
-  // Test round-trip: write a tiny test object, create signed URL, delete it
+  // Round-trip test
   const testPath = `_setup-test/verify-${Date.now()}.txt`
-  const testBody = Buffer.from('supabase-storage-setup-check')
-
-  const { error: uploadErr } = await sb.storage.from(bucket).upload(testPath, testBody, {
-    contentType: 'text/plain', upsert: true,
-  })
-  if (uploadErr) {
-    results.push(`test upload: FAILED — ${uploadErr.message}`)
+  const { error: upErr } = await sb.storage.from(bucket).upload(
+    testPath, Buffer.from('setup-check'), { contentType: 'text/plain', upsert: true }
+  )
+  if (upErr) {
+    results.push(`test upload: FAILED — ${upErr.message}`)
   } else {
     results.push('test upload: ok')
-
-    const { data: signedData, error: signErr } = await sb.storage.from(bucket).createSignedUrl(testPath, 10)
-    if (signErr || !signedData?.signedUrl) {
-      results.push(`test signed URL: FAILED — ${signErr?.message}`)
-    } else {
-      results.push('test signed URL: ok')
-    }
-
+    const { data: sig, error: sigErr } = await sb.storage.from(bucket).createSignedUrl(testPath, 10)
+    results.push(sigErr || !sig?.signedUrl ? `test signed-url: FAILED — ${sigErr?.message}` : 'test signed-url: ok')
     const { error: delErr } = await sb.storage.from(bucket).remove([testPath])
     results.push(delErr ? `test delete: FAILED — ${delErr.message}` : 'test delete: ok')
   }
 
-  // Return DB host (project ref only — never the password)
-  let dbHost = ''
-  try {
-    const dbUrl = process.env.DATABASE_URL ?? ''
-    const match = dbUrl.match(/@([^:/?]+)/)
-    dbHost = match?.[1] ?? 'unknown'
-  } catch { /* ignore */ }
-
-  return NextResponse.json({
-    ok:          true,
-    bucket,
-    dbHost,
-    supabaseUrl: supabaseUrl.replace(/https?:\/\//, '').split('.')[0], // project ref only
-    results,
-  })
+  return NextResponse.json({ ok: true, bucket, bucketPublic: bkt?.public ?? null, results })
 }
