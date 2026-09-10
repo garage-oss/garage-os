@@ -45,10 +45,20 @@ export async function POST(req: NextRequest) {
 
   const results: string[] = []
 
+  // Verify storage endpoint directly first
+  const storageUrl = `${normalUrl}/storage/v1/bucket`
+  let rawStatus = 0
+  let rawBody = ''
+  try {
+    const r = await fetch(storageUrl, { headers: { Authorization: `Bearer ${serviceKey}`, apikey: serviceKey } })
+    rawStatus = r.status
+    rawBody = await r.text()
+  } catch (e: unknown) { rawBody = String(e) }
+
   // Check if bucket exists
   const { data: buckets, error: listErr } = await sb.storage.listBuckets()
   if (listErr) {
-    return NextResponse.json({ error: `listBuckets: ${listErr.message}`, urlDiag }, { status: 500 })
+    return NextResponse.json({ error: `listBuckets: ${listErr.message}`, urlDiag, rawStatus, rawBody: rawBody.slice(0, 400) }, { status: 500 })
   }
 
   const existing = (buckets ?? []).find(b => b.name === bucket)
