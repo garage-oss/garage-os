@@ -85,8 +85,8 @@ export async function POST(req: NextRequest) {
       }, { status: 500 })
     }
     results.push(`bucket '${bucket}': created (private)`)
-    // Apply limits separately if needed
-    await sb.storage.updateBucket(bucket, { fileSizeLimit: 10 * 1024 * 1024 })
+    // Apply limits separately
+    await sb.storage.updateBucket(bucket, { public: false, fileSizeLimit: 10 * 1024 * 1024 })
   }
 
   // Verify private
