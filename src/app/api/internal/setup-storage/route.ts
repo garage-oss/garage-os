@@ -45,7 +45,7 @@ export async function POST(req: NextRequest) {
 
   const results: string[] = []
 
-  // Verify storage endpoint directly first
+  // Verify storage endpoint directly first (normalUrl contains no secrets)
   const storageUrl = `${normalUrl}/storage/v1/bucket`
   let rawStatus = 0
   let rawBody = ''
@@ -58,7 +58,14 @@ export async function POST(req: NextRequest) {
   // Check if bucket exists
   const { data: buckets, error: listErr } = await sb.storage.listBuckets()
   if (listErr) {
-    return NextResponse.json({ error: `listBuckets: ${listErr.message}`, urlDiag, rawStatus, rawBody: rawBody.slice(0, 400) }, { status: 500 })
+    return NextResponse.json({
+      error: `listBuckets: ${listErr.message}`,
+      urlDiag,
+      normalUrl,           // safe: no credentials
+      storageUrl,          // safe: no credentials
+      rawStatus,
+      rawBody: rawBody.slice(0, 400),
+    }, { status: 500 })
   }
 
   const existing = (buckets ?? []).find(b => b.name === bucket)
