@@ -61,6 +61,10 @@ export async function POST(req: NextRequest) {
     }, { status: 500 })
   }
 
+  // Log existing bucket names (not contents — just names, no secrets)
+  const existingNames = (buckets ?? []).map(b => b.name)
+  results.push(`existing buckets: [${existingNames.join(', ') || 'none'}]`)
+
   const existing = (buckets ?? []).find(b => b.name === bucket)
   if (existing) {
     results.push(`bucket '${bucket}': already exists (public=${existing.public})`)
@@ -71,15 +75,18 @@ export async function POST(req: NextRequest) {
         : `  → updated to private: ok`)
     }
   } else {
-    const { error: createErr } = await sb.storage.createBucket(bucket, {
-      public:           false,
-      fileSizeLimit:    10 * 1024 * 1024,
-      allowedMimeTypes: ['image/jpeg', 'image/png', 'application/pdf'],
-    })
+    // Try minimal creation first
+    const { error: createErr } = await sb.storage.createBucket(bucket, { public: false })
     if (createErr) {
-      return NextResponse.json({ error: `createBucket: ${createErr.message}`, results }, { status: 500 })
+      return NextResponse.json({
+        error: `createBucket: ${createErr.message}`,
+        bucketAttempted: bucket,
+        results,
+      }, { status: 500 })
     }
     results.push(`bucket '${bucket}': created (private)`)
+    // Apply limits separately if needed
+    await sb.storage.updateBucket(bucket, { fileSizeLimit: 10 * 1024 * 1024 })
   }
 
   // Verify private
