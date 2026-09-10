@@ -89,49 +89,96 @@ async function fetchConnectorClients(): Promise<ConnectorClient[] | null> {
 }
 
 // ─── Workorder-based phone fallback ──────────────────────────────────────────
+// Checks all fields in each work order row for phone data:
+//   drv_phone        — driver phone per work order
+//   cli_phone        — if connector JOIN returns it from ca_clients
+//   cli_pele         — if connector JOIN returns it from ca_clients (cellular)
+// Uses cursor pagination to cover all work orders.
 
-async function fetchPhonesFromWorkorders(): Promise<Map<string, string>> {
-  if (!CONNECTOR_URL || !CONNECTOR_KEY) return new Map()
+async function fetchPhonesFromWorkorders(): Promise<{ map: Map<string, string>; fields: string[]; totalRows: number }> {
+  const empty = { map: new Map<string, string>(), fields: [], totalRows: 0 }
+  if (!CONNECTOR_URL || !CONNECTOR_KEY) return empty
+
+  const phoneByCliNo = new Map<string, string>()
+  const phoneFieldsFound = new Set<string>()
+  let totalRows = 0
+
+  // Collect all rows via cursor pagination
+  let cursor: number | null = null
+  let pages = 0
+  const PAGE = 100
+  const MAX_PAGES = 40  // up to 4000 rows
+
   try {
-    const res = await fetch(`${CONNECTOR_URL}/api/workorders?limit=5000`, {
-      headers: { 'x-api-key': CONNECTOR_KEY },
-      signal:  AbortSignal.timeout(30_000),
-      cache:   'no-store',
-    })
-    if (!res.ok) return new Map()
-    const json  = await res.json()
-    const rows: WORow[] = json.rows ?? json.data ?? []
+    while (pages < MAX_PAGES) {
+      const qs: string = cursor ? `limit=${PAGE}&before=${cursor}` : `limit=${PAGE}`
+      const res: Response = await fetch(`${CONNECTOR_URL}/api/workorders?${qs}`, {
+        headers: { 'x-api-key': CONNECTOR_KEY },
+        signal:  AbortSignal.timeout(30_000),
+        cache:   'no-store',
+      })
+      if (!res.ok) break
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const json: any    = await res.json()
+      const rows: WORow[] = json.rows ?? json.data ?? (Array.isArray(json) ? json : [])
+      if (!rows.length) break
 
-    // Aggregate: first non-null drv_phone per customer
-    const phoneByCliNo = new Map<string, string>()
-    for (const row of rows) {
-      if (!row.cli_no) continue
-      const key   = String(row.cli_no)
-      if (phoneByCliNo.has(key)) continue
-      const phone = normalizeIsraeliPhone(row.drv_phone)
-      if (phone) phoneByCliNo.set(key, phone)
+      totalRows += rows.length
+      pages++
+
+      for (const row of rows) {
+        if (!row.cli_no) continue
+        const key = String(row.cli_no)
+        if (phoneByCliNo.has(key)) continue
+
+        // Check all possible phone field names in the row
+        const candidates: Array<[string, unknown]> = [
+          ['cli_pele',  row.cli_pele],
+          ['cli_phone', row.cli_phone],
+          ['drv_phone', row.drv_phone],
+        ]
+        for (const [fieldName, val] of candidates) {
+          const phone = normalizeIsraeliPhone(val as string | null)
+          if (phone) {
+            phoneByCliNo.set(key, phone)
+            phoneFieldsFound.add(fieldName)
+            break
+          }
+        }
+      }
+
+      // Pagination: use minCardId from response as next cursor
+      const minCardId: number | null = json.minCardId ?? (rows.length > 0
+        ? Math.min(...rows.map((r: WORow) => Number(r.card_id ?? 0)))
+        : null)
+
+      const remaining: number = json.remaining ?? 0
+      if (rows.length < PAGE || remaining === 0 || !minCardId) break
+      cursor = minCardId
     }
-    return phoneByCliNo
   } catch {
-    return new Map()
+    // return whatever we got
   }
+
+  return { map: phoneByCliNo, fields: Array.from(phoneFieldsFound), totalRows }
 }
 
 // ─── Public result type ───────────────────────────────────────────────────────
 
 export interface PhoneSyncResult {
-  source:          'connector_clients' | 'workorder_drv_phone' | 'none'
-  nesherTable:     string
-  nesherFields:    string[]
-  totalNesherRows: number
-  withRealPhone:   number
-  withoutPhone:    number
-  updatedInGarage: number
-  skippedNoMatch:  number
-  skippedNoPhone:  number
-  skippedHadPhone: number
-  failed:          number
-  errors:          string[]
+  source:                'connector_clients' | 'workorder_phone_fields' | 'none'
+  nesherTable:           string
+  nesherFields:          string[]
+  connectorFieldsFound:  string[]   // raw fields present in connector response with phone data
+  totalNesherRows:       number
+  withRealPhone:         number
+  withoutPhone:          number
+  updatedInGarage:       number
+  skippedNoMatch:        number
+  skippedNoPhone:        number
+  skippedHadPhone:       number
+  failed:                number
+  errors:                string[]
 }
 
 // ─── Main export ──────────────────────────────────────────────────────────────
@@ -141,18 +188,20 @@ export async function runPhoneSync(orgId: string): Promise<PhoneSyncResult> {
 
   // Build phone map: externalNo (cli_no as string) → normalized phone
   let phoneMap = new Map<string, string>()
-  let source:  PhoneSyncResult['source'] = 'none'
-  let nesherTable  = ''
-  let nesherFields: string[] = []
-  let totalNesherRows = 0
+  let source:              PhoneSyncResult['source'] = 'none'
+  let nesherTable          = ''
+  let nesherFields:        string[] = []
+  let connectorFieldsFound: string[] = []
+  let totalNesherRows      = 0
 
   // ── Attempt 1: /api/clients endpoint ────────────────────────────────────────
   const clients = await fetchConnectorClients()
   if (clients) {
-    source       = 'connector_clients'
-    nesherTable  = 'dbo.ca_clients'
-    nesherFields = ['cli_phone', 'cli_pele']
-    totalNesherRows = clients.length
+    source               = 'connector_clients'
+    nesherTable          = 'dbo.ca_clients'
+    nesherFields         = ['cli_pele', 'cli_phone']
+    connectorFieldsFound = ['cli_pele', 'cli_phone']
+    totalNesherRows      = clients.length
 
     for (const c of clients) {
       if (!c.cli_no) continue
@@ -162,16 +211,17 @@ export async function runPhoneSync(orgId: string): Promise<PhoneSyncResult> {
       if (phone) phoneMap.set(key, phone)
     }
   } else {
-    // ── Attempt 2: drv_phone from work orders ──────────────────────────────────
-    const woPhones = await fetchPhonesFromWorkorders()
-    if (woPhones.size > 0) {
-      source       = 'workorder_drv_phone'
+    // ── Attempt 2: any phone fields in work order rows ─────────────────────────
+    const { map, fields, totalRows } = await fetchPhonesFromWorkorders()
+    connectorFieldsFound = fields
+    totalNesherRows      = totalRows
+
+    if (map.size > 0) {
+      source       = 'workorder_phone_fields'
       nesherTable  = 'dbo.ca_cards'
-      nesherFields = ['drv_phone']
-      phoneMap     = woPhones
+      nesherFields = fields
+      phoneMap     = map
     }
-    // Set totalNesherRows below from map size
-    totalNesherRows = phoneMap.size
   }
 
   const withRealPhone   = phoneMap.size
@@ -179,7 +229,7 @@ export async function runPhoneSync(orgId: string): Promise<PhoneSyncResult> {
 
   if (phoneMap.size === 0) {
     return {
-      source, nesherTable, nesherFields, totalNesherRows,
+      source, nesherTable, nesherFields, connectorFieldsFound, totalNesherRows,
       withRealPhone: 0, withoutPhone: totalNesherRows,
       updatedInGarage: 0, skippedNoMatch: 0, skippedNoPhone: 0,
       skippedHadPhone: 0, failed: 0, errors,
@@ -228,7 +278,7 @@ export async function runPhoneSync(orgId: string): Promise<PhoneSyncResult> {
   }
 
   return {
-    source, nesherTable, nesherFields, totalNesherRows,
+    source, nesherTable, nesherFields, connectorFieldsFound, totalNesherRows,
     withRealPhone, withoutPhone,
     updatedInGarage, skippedNoMatch, skippedNoPhone, skippedHadPhone,
     failed, errors,
