@@ -27,7 +27,19 @@ export async function POST(req: NextRequest) {
     }, { status: 503 })
   }
 
-  const sb = createClient(supabaseUrl, serviceKey, {
+  // Diagnostic: show sanitized URL info (project ref only, never the key)
+  const urlDiag = {
+    startsWithHttps: supabaseUrl.startsWith('https://'),
+    endsWithSlash:   supabaseUrl.endsWith('/'),
+    projRef:         supabaseUrl.replace(/^https?:\/\//, '').split('.')[0].slice(0, 20),
+    keyLength:       serviceKey.length,
+    keyPrefix:       serviceKey.slice(0, 6),
+  }
+
+  // Normalize URL: strip trailing slash
+  const normalUrl = supabaseUrl.replace(/\/+$/, '')
+
+  const sb = createClient(normalUrl, serviceKey, {
     auth: { persistSession: false, autoRefreshToken: false },
   })
 
@@ -36,7 +48,7 @@ export async function POST(req: NextRequest) {
   // Check if bucket exists
   const { data: buckets, error: listErr } = await sb.storage.listBuckets()
   if (listErr) {
-    return NextResponse.json({ error: `listBuckets: ${listErr.message}` }, { status: 500 })
+    return NextResponse.json({ error: `listBuckets: ${listErr.message}`, urlDiag }, { status: 500 })
   }
 
   const existing = (buckets ?? []).find(b => b.name === bucket)
