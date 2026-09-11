@@ -11,9 +11,12 @@
 import { NextResponse } from 'next/server'
 import { prisma }       from '@/lib/prisma'
 import { logger }       from '@/lib/logger'
-import { isTwilioEnabled } from '@/lib/twilio'
-import { isStripeEnabled } from '@/lib/stripe'
-import { isEmailEnabled }  from '@/lib/email'
+
+// Read feature flags directly from process.env to avoid importing modules
+// that trigger env.ts validation (which can fail when optional vars are empty).
+function isTwilioEnabled()  { return process.env.FLAG_TWILIO_WHATSAPP === 'true' }
+function isStripeEnabled()  { return process.env.FLAG_STRIPE_PAYMENTS === 'true' }
+function isEmailEnabled()   { return !!(process.env.SMTP_HOST) }
 
 export const dynamic = 'force-dynamic'
 
