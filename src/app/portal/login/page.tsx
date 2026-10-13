@@ -3,7 +3,7 @@ import { Loader2 }  from 'lucide-react'
 import { PortalLoginContent } from './LoginClient'
 
 export default async function PortalLoginPage() {
-  const testMode = process.env.CUSTOMER_PORTAL_TEST_MODE === 'true'
+  const testMode = process.env.CUSTOMER_PORTAL_TEST_MODE === 'true' && process.env.NODE_ENV !== 'production'
 
   return (
     <>
