@@ -80,8 +80,9 @@ export async function POST(req: NextRequest) {
   } else if (body.cliNo) {
     const cliNo = String(body.cliNo).trim()
 
+    // importSource is 'NESHER' (uppercase) from the connector importer
     customer = await prisma.customer.findFirst({
-      where:  { importSource: 'nesher', importId: cliNo, organizationId: orgId },
+      where:  { importSource: 'NESHER', importId: cliNo, organizationId: orgId },
       select: { id: true, name: true },
     })
 
@@ -95,8 +96,8 @@ export async function POST(req: NextRequest) {
       }
       const nc = nesherData.customer
       customer = await prisma.customer.upsert({
-        where:  { organizationId_importSource_importId: { organizationId: orgId, importSource: 'nesher', importId: String(nc.cli_no) } },
-        create: { organizationId: orgId, name: nc.cli_name, phone: nc.phone ?? '', importSource: 'nesher', importId: String(nc.cli_no) },
+        where:  { organizationId_importSource_importId: { organizationId: orgId, importSource: 'NESHER', importId: String(nc.cli_no) } },
+        create: { organizationId: orgId, name: nc.cli_name, phone: nc.phone ?? '', importSource: 'NESHER', importId: String(nc.cli_no) },
         update: { name: nc.cli_name, phone: nc.phone ?? undefined },
         select: { id: true, name: true },
       })
