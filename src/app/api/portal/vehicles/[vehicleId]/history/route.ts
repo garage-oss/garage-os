@@ -20,7 +20,7 @@ export async function GET(
   if (!vehicle) return NextResponse.json({ error: 'לא נמצא' }, { status: 404 })
 
   // Pull NESHER history if vehicle came from NESHER
-  const nesherHistory = vehicle.importSource === 'nesher'
+  const nesherHistory = vehicle.importSource === 'NESHER'
     ? await nesherVehicleHistory(vehicle.plate)
     : null
 

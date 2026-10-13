@@ -46,7 +46,7 @@ export default async function CustomerPortalHome() {
 
   // If no vehicles in DB and customer is from NESHER, fetch from connector
   let nesherVehicles: Array<{ car_no: string; car_desc: string | null; last_km: number | null; last_visit_dt: string | null; order_count: number }> = []
-  if (vehicles.length === 0 && ctx.importSource === 'nesher' && ctx.importId) {
+  if (vehicles.length === 0 && ctx.importSource === 'NESHER' && ctx.importId) {
     const data = await nesherCustomer(ctx.importId)
     nesherVehicles = data?.vehicles ?? []
   }

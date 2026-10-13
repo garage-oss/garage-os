@@ -77,7 +77,7 @@ export async function POST(req: NextRequest) {
 
   // Fetch NESHER history to check recently done items
   let nesherRows: Array<{ cli_comp1: string | null }> = []
-  if (vehicle.importSource === 'nesher') {
+  if (vehicle.importSource === 'NESHER') {
     nesherRows = (await nesherVehicleHistory(vehicle.plate)) ?? []
   }
 

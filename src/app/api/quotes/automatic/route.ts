@@ -41,7 +41,7 @@ export async function POST(req: NextRequest) {
 
   if (nesherCliNo) {
     customer = await prisma.customer.findFirst({
-      where: { organizationId: orgId, importSource: 'nesher', importId: String(nesherCliNo) },
+      where: { organizationId: orgId, importSource: 'NESHER', importId: String(nesherCliNo) },
     })
   }
 
@@ -58,7 +58,7 @@ export async function POST(req: NextRequest) {
         organizationId: orgId,
         name:           customerName,
         phone:          '',
-        importSource:   nesherCliNo ? 'nesher' : null,
+        importSource:   nesherCliNo ? 'NESHER' : null,
         importId:       nesherCliNo ? String(nesherCliNo) : null,
         externalNo:     nesherCliNo ? String(nesherCliNo) : null,
       },
@@ -81,7 +81,7 @@ export async function POST(req: NextRequest) {
         year:           new Date().getFullYear(),
         mileage:        mileage || null,
         customerId:     customer.id,
-        importSource:   'nesher',
+        importSource:   'NESHER',
         importId:       cleanPlate,
       },
     })

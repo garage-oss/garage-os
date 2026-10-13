@@ -94,7 +94,7 @@ export default async function PreviewPage({ params }: PageProps) {
 
   // NESHER fallback for vehicles
   let nesherVehicles: Array<{ car_no: string; car_desc: string | null; last_km: number | null }> = []
-  if (vehicles.length === 0 && customer.importSource === 'nesher' && customer.importId) {
+  if (vehicles.length === 0 && customer.importSource === 'NESHER' && customer.importId) {
     const data = await nesherCustomer(customer.importId)
     nesherVehicles = data?.vehicles ?? []
   }

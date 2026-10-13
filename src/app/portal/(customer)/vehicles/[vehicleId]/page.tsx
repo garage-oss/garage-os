@@ -42,7 +42,7 @@ export default async function VehicleDetailPage({ params }: Props) {
     },
   })
 
-  const nesherHistory = vehicle.importSource === 'nesher'
+  const nesherHistory = vehicle.importSource === 'NESHER'
     ? await nesherVehicleHistory(vehicle.plate)
     : null
 
