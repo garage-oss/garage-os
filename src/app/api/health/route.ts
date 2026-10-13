@@ -44,11 +44,13 @@ async function checkDatabase(): Promise<ServiceStatus> {
 }
 
 async function checkStorage(): Promise<ServiceStatus> {
-  // Strip leading BOM (U+FEFF) that Vercel sometimes adds when copy-pasting values
-  const provider = (process.env.STORAGE_PROVIDER ?? 'local').replace(/^﻿/, '').trim()
-  if (provider === 'local') return { status: 'ok', detail: 'local' }
+  // Use includes() rather than equality — robust against any leading BOM / whitespace
+  // that Vercel dashboard copy-paste can add (U+FEFF etc.).
+  const raw = (process.env.STORAGE_PROVIDER ?? '').trim()
 
-  if (provider === 's3') {
+  if (!raw || raw.includes('local')) return { status: 'ok', detail: 'local' }
+
+  if (raw.includes('s3')) {
     const ok = !!(process.env.AWS_ACCESS_KEY_ID && process.env.AWS_S3_BUCKET)
     return {
       status: ok ? 'ok' : 'error',
@@ -56,7 +58,7 @@ async function checkStorage(): Promise<ServiceStatus> {
     }
   }
 
-  if (provider === 'supabase') {
+  if (raw.includes('supabase')) {
     const ok = !!(process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_KEY)
     return {
       status: ok ? 'ok' : 'error',
@@ -64,7 +66,7 @@ async function checkStorage(): Promise<ServiceStatus> {
     }
   }
 
-  return { status: 'disabled', detail: provider }
+  return { status: 'disabled', detail: raw }
 }
 
 function checkTwilio(): ServiceStatus {

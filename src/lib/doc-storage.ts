@@ -170,9 +170,12 @@ async function supabaseSignedUrl(path: string, expiresInSeconds = 120): Promise<
 
 // ─── Public interface ─────────────────────────────────────────────────────────
 
-// Strip BOM (U+FEFF) and whitespace — Vercel occasionally adds a BOM when
-// copy-pasting env var values in the dashboard.
-const provider = ((process.env.STORAGE_PROVIDER ?? 'local').replace(/^﻿/, '').trim()) as 'local' | 's3' | 'supabase'
+// Use includes() to match provider name regardless of any leading BOM / whitespace
+// that Vercel dashboard copy-paste can introduce (U+FEFF etc.).
+const _rawProvider = (process.env.STORAGE_PROVIDER ?? '').trim()
+const provider: 'local' | 's3' | 'supabase' =
+  _rawProvider.includes('supabase') ? 'supabase' :
+  _rawProvider.includes('s3')       ? 's3'       : 'local'
 
 export async function docStorageWrite(path: string, buffer: Buffer, mimeType: string): Promise<void> {
   if (provider === 's3')       return s3Write(path, buffer, mimeType)
