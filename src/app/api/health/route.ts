@@ -108,6 +108,7 @@ export async function GET() {
     {
       status,
       version:   process.env.npm_package_version ?? '0.1.0',
+      commit:    process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 7) ?? 'dev',
       timestamp: new Date().toISOString(),
       uptime:    Math.floor((Date.now() - startedAt) / 1000),
       latency:   Date.now() - t0,
