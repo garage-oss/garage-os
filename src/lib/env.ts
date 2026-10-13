@@ -120,7 +120,7 @@ function validate(): Env {
   const cleanedEnv = Object.fromEntries(
     Object.entries(process.env)
       .filter(([, v]) => v !== '')
-      .map(([k, v]) => [k, typeof v === 'string' ? v.replace(/^﻿/, '').trim() : v]),
+      .map(([k, v]) => [k, typeof v === 'string' ? v.replace(/^[^ -~]+/, '').trim() : v]),
   )
   const result = envSchema.safeParse(cleanedEnv)
 
