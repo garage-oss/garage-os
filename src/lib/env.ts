@@ -115,8 +115,12 @@ function validate(): Env {
   // Strip empty-string values so zod enum/url validators fall back to their
   // defaults. Vercel stores unset vars as "" which would otherwise fail enum
   // checks like z.enum(['true','false']).
+  // Also strip leading BOM (U+FEFF) that Vercel sometimes adds when values
+  // are copy-pasted into the dashboard.
   const cleanedEnv = Object.fromEntries(
-    Object.entries(process.env).filter(([, v]) => v !== ''),
+    Object.entries(process.env)
+      .filter(([, v]) => v !== '')
+      .map(([k, v]) => [k, typeof v === 'string' ? v.replace(/^﻿/, '').trim() : v]),
   )
   const result = envSchema.safeParse(cleanedEnv)
 

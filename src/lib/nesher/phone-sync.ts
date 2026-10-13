@@ -74,7 +74,9 @@ function isRealPhone(phone: string | null | undefined): boolean {
 async function fetchConnectorClients(): Promise<ConnectorClient[] | null> {
   if (!CONNECTOR_URL || !CONNECTOR_KEY) return null
   try {
-    const res = await fetch(`${CONNECTOR_URL}/api/clients`, {
+    // Request the maximum batch size (2000) to capture all clients in one call.
+    // The garage has ~1,400 clients so a single page covers all of them.
+    const res = await fetch(`${CONNECTOR_URL}/api/clients?limit=2000`, {
       headers: { 'x-api-key': CONNECTOR_KEY },
       signal:  AbortSignal.timeout(30_000),
       cache:   'no-store',

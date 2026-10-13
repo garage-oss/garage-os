@@ -89,6 +89,19 @@ type ImportState =
   | { phase: 'done'; result: ImportResult }
   | { phase: 'error'; error: string }
 
+interface SyncAllTotals {
+  customers:  ImportStats
+  vehicles:   ImportStats
+  workOrders: ImportStats
+}
+
+type FullSyncState =
+  | { phase: 'idle' }
+  | { phase: 'confirm' }
+  | { phase: 'running'; pages: number; totals: SyncAllTotals; cursor: number | null }
+  | { phase: 'done'; pages: number; totals: SyncAllTotals; durationMs: number }
+  | { phase: 'error'; error: string; pages: number; totals: SyncAllTotals }
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export function NesherImportPanel() {
@@ -113,6 +126,9 @@ export function NesherImportPanel() {
   // Real import state
   const [importState,   setImportState]   = useState<ImportState>({ phase: 'idle' })
   const [importOpen,    setImportOpen]    = useState(false)
+
+  // Full sync state
+  const [fullSync, setFullSync] = useState<FullSyncState>({ phase: 'idle' })
 
   // ── Actions ──────────────────────────────────────────────────────────────────
 
@@ -187,6 +203,67 @@ export function NesherImportPanel() {
       setImportState({ phase: 'error', error: e instanceof Error ? e.message : String(e) })
     }
   }
+
+  const emptyTotals = (): SyncAllTotals => ({
+    customers:  { created: 0, updated: 0, skipped: 0, failed: 0 },
+    vehicles:   { created: 0, updated: 0, skipped: 0, failed: 0 },
+    workOrders: { created: 0, updated: 0, skipped: 0, failed: 0 },
+  })
+
+  const runFullSync = useCallback(async () => {
+    const t0      = Date.now()
+    const totals  = emptyTotals()
+    let cursor: number | null = null
+    let pages     = 0
+
+    setFullSync({ phase: 'running', pages, totals: { ...totals }, cursor })
+
+    while (true) {
+      try {
+        const r: Response = await fetch('/api/nesher/sync-all', {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify({ cursor }),
+        })
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const data: any = await r.json()
+
+        if (!r.ok) {
+          setFullSync({ phase: 'error', error: data.error ?? `HTTP ${r.status}`, pages, totals: { ...totals } })
+          return
+        }
+
+        pages += data.pages ?? 0
+        for (const entity of ['customers', 'vehicles', 'workOrders'] as const) {
+          const s = data.stats?.[entity]
+          if (s) {
+            totals[entity].created  += s.created  ?? 0
+            totals[entity].updated  += s.updated  ?? 0
+            totals[entity].skipped  += s.skipped  ?? 0
+            totals[entity].failed   += s.failed   ?? 0
+          }
+        }
+
+        if (data.done) {
+          setFullSync({ phase: 'done', pages, totals: { ...totals }, durationMs: Date.now() - t0 })
+          setStatus(null)  // refresh status counts
+          return
+        }
+
+        cursor = data.nextCursor ?? null
+        setFullSync({ phase: 'running', pages, totals: { ...totals }, cursor })
+
+        // Small guard: if cursor is null but not done, stop to avoid infinite loop
+        if (cursor === null) {
+          setFullSync({ phase: 'done', pages, totals: { ...totals }, durationMs: Date.now() - t0 })
+          return
+        }
+      } catch (e) {
+        setFullSync({ phase: 'error', error: e instanceof Error ? e.message : String(e), pages, totals: { ...totals } })
+        return
+      }
+    }
+  }, [])
 
   // ── Render ───────────────────────────────────────────────────────────────────
 
@@ -344,14 +421,111 @@ export function NesherImportPanel() {
         )}
       </div>
 
-      {/* ── 4. Real import section ─────────────────────────────────────────── */}
+      {/* ── 4. Full Historical Sync ────────────────────────────────────────── */}
+      <div className="bg-[#1a1d27] border border-[#6366f1]/30 rounded-xl overflow-hidden">
+        <div className="flex items-center justify-between px-5 py-4">
+          <div className="flex items-center gap-2">
+            <RefreshCw size={15} className="text-[#6366f1]" />
+            <span className="font-semibold text-sm">סנכרון מלא — כל הנתונים</span>
+            <span className="text-xs bg-[#6366f1]/10 border border-[#6366f1]/20 text-[#6366f1] px-2 py-0.5 rounded-full">
+              כל הדפים
+            </span>
+          </div>
+
+          {fullSync.phase === 'idle' && (
+            <button
+              onClick={() => setFullSync({ phase: 'confirm' })}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#6366f1] text-white text-xs font-medium hover:bg-[#5558e0] transition-all"
+            >
+              <RefreshCw size={13} /> סנכרן עכשיו
+            </button>
+          )}
+          {fullSync.phase === 'confirm' && (
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setFullSync({ phase: 'idle' })}
+                className="px-3 py-1.5 rounded-lg border border-[#2e3147] text-[#8892a4] text-xs hover:text-[#e2e8f0] transition-all"
+              >
+                ביטול
+              </button>
+              <button
+                onClick={runFullSync}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-[#6366f1] text-white text-xs font-medium hover:bg-[#5558e0] transition-all"
+              >
+                <CheckCircle2 size={13} /> אישור — הרץ
+              </button>
+            </div>
+          )}
+          {fullSync.phase === 'running' && (
+            <div className="flex items-center gap-2 text-[#6366f1] text-xs">
+              <Loader2 size={13} className="animate-spin" />
+              דף {fullSync.pages}...
+            </div>
+          )}
+          {(fullSync.phase === 'done' || fullSync.phase === 'error') && (
+            <button
+              onClick={() => setFullSync({ phase: 'idle' })}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#252836] border border-[#2e3147] text-[#8892a4] text-xs hover:text-[#e2e8f0] transition-all"
+            >
+              <RefreshCw size={13} /> הרץ שוב
+            </button>
+          )}
+        </div>
+
+        {fullSync.phase === 'confirm' && (
+          <div className="border-t border-[#2e3147] px-5 py-3">
+            <p className="text-xs text-amber-300 flex items-start gap-2">
+              <TriangleAlert size={13} className="mt-0.5 shrink-0" />
+              יייבא את כל הלקוחות, הרכבים והכרטיסיות מ-NESHER. הפעולה בטוחה — רשומות קיימות יעודכנו ולא יימחקו.
+            </p>
+          </div>
+        )}
+
+        {(fullSync.phase === 'running' || fullSync.phase === 'done' || fullSync.phase === 'error') && (
+          <div className="border-t border-[#2e3147] px-5 py-4 space-y-3">
+            {/* Progress bar (running) */}
+            {fullSync.phase === 'running' && (
+              <div className="space-y-1">
+                <div className="flex justify-between text-xs text-[#8892a4]">
+                  <span>מייבא...</span>
+                  <span>{fullSync.pages} דפים עובדו</span>
+                </div>
+                <div className="h-1.5 bg-[#252836] rounded-full overflow-hidden">
+                  <div className="h-full bg-[#6366f1] rounded-full animate-pulse" style={{ width: '60%' }} />
+                </div>
+              </div>
+            )}
+
+            {/* Done summary */}
+            {fullSync.phase === 'done' && (
+              <div className="flex items-center gap-2 text-emerald-400 text-xs mb-3">
+                <CheckCircle2 size={13} />
+                הושלם ב-{((fullSync.durationMs) / 1000).toFixed(1)}שנ׳ · {fullSync.pages} דפים
+              </div>
+            )}
+
+            {/* Error */}
+            {fullSync.phase === 'error' && (
+              <div className="flex items-center gap-2 text-red-400 text-xs mb-3">
+                <XCircle size={13} /> {fullSync.error}
+                {fullSync.pages > 0 && <span className="text-[#8892a4]"> (לאחר {fullSync.pages} דפים)</span>}
+              </div>
+            )}
+
+            {/* Stats table */}
+            {'totals' in fullSync && <FullSyncStats totals={fullSync.totals} />}
+          </div>
+        )}
+      </div>
+
+      {/* ── 5. Single-page import (legacy) ────────────────────────────────── */}
       <div className="bg-[#1a1d27] border border-emerald-500/20 rounded-xl overflow-hidden">
         <div className="flex items-center justify-between px-5 py-4">
           <div className="flex items-center gap-2">
             <Upload size={15} className="text-emerald-400" />
-            <span className="font-semibold text-sm">ייבוא אמיתי ל-GarageOS</span>
+            <span className="font-semibold text-sm">ייבוא דף יחיד (100 רשומות)</span>
             <span className="text-xs bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full">
-              כותב לבסיס הנתונים
+              דף אחד בלבד
             </span>
           </div>
           {importState.phase === 'idle' && (
@@ -607,6 +781,43 @@ function SampleRow({ data }: { data: Record<string, unknown> }) {
           <span className="text-[#c8d0e0]">{String(v)}</span>
         </span>
       ))}
+    </div>
+  )
+}
+
+function FullSyncStats({ totals }: { totals: SyncAllTotals }) {
+  const rows = [
+    { label: 'לקוחות',    stats: totals.customers  },
+    { label: 'רכבים',     stats: totals.vehicles   },
+    { label: 'כרטיסיות', stats: totals.workOrders },
+  ]
+  const anyData = rows.some(r => r.stats.created + r.stats.updated + r.stats.skipped + r.stats.failed > 0)
+  if (!anyData) return null
+
+  return (
+    <div className="overflow-x-auto rounded-lg border border-[#2e3147]">
+      <table className="w-full text-xs">
+        <thead>
+          <tr className="bg-[#252836] border-b border-[#2e3147]">
+            <th className="px-4 py-2 text-right font-medium text-[#8892a4]">ישות</th>
+            <th className="px-4 py-2 text-center font-medium text-emerald-400">נוצרו</th>
+            <th className="px-4 py-2 text-center font-medium text-blue-400">עודכנו</th>
+            <th className="px-4 py-2 text-center font-medium text-[#8892a4]">דולגו</th>
+            <th className="px-4 py-2 text-center font-medium text-red-400">שגיאות</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map(({ label, stats }) => (
+            <tr key={label} className="border-b border-[#2e3147] last:border-0">
+              <td className="px-4 py-2.5 font-medium">{label}</td>
+              <td className="px-4 py-2.5 text-center text-emerald-400 font-mono">{stats.created.toLocaleString()}</td>
+              <td className="px-4 py-2.5 text-center text-blue-400 font-mono">{stats.updated.toLocaleString()}</td>
+              <td className="px-4 py-2.5 text-center text-[#8892a4] font-mono">{stats.skipped.toLocaleString()}</td>
+              <td className="px-4 py-2.5 text-center text-red-400 font-mono">{stats.failed.toLocaleString()}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   )
 }
