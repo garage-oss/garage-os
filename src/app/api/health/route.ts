@@ -44,16 +44,23 @@ async function checkDatabase(): Promise<ServiceStatus> {
 }
 
 async function checkStorage(): Promise<ServiceStatus> {
-  const provider = process.env.STORAGE_PROVIDER ?? 'local'
+  // Strip leading BOM (U+FEFF) that Vercel sometimes adds when copy-pasting values
+  const provider = (process.env.STORAGE_PROVIDER ?? 'local').replace(/^﻿/, '').trim()
   if (provider === 'local') return { status: 'ok', detail: 'local' }
 
-  // For S3 — a lightweight existence check would require a ListBuckets call.
-  // For now, just verify config is present.
   if (provider === 's3') {
     const ok = !!(process.env.AWS_ACCESS_KEY_ID && process.env.AWS_S3_BUCKET)
     return {
       status: ok ? 'ok' : 'error',
       detail: ok ? 's3' : 'S3 config missing',
+    }
+  }
+
+  if (provider === 'supabase') {
+    const ok = !!(process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_KEY)
+    return {
+      status: ok ? 'ok' : 'error',
+      detail: ok ? 'supabase' : 'SUPABASE_URL or SUPABASE_SERVICE_KEY missing',
     }
   }
 
