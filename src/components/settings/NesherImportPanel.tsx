@@ -12,14 +12,16 @@ import {
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface StatusData {
-  configured: boolean
-  connected:  boolean
-  error?:     string
+  configured:        boolean
+  connected:         boolean
+  error?:            string
+  connectorVersion?: string | null
+  lastSyncAt?:       string | null
   counts?: {
     ca_clients: number
     ca_cars:    number
     ca_cards:   number
-  }
+  } | null
   imported?: {
     customers:  number
     vehicles:   number
@@ -293,7 +295,22 @@ export function NesherImportPanel() {
         {status ? (
           <ConnectionStatus status={status} />
         ) : (
-          <p className="text-xs text-[#8892a4]">לחץ "בדוק חיבור" כדי לאמת את פרטי ה-SQL Server.</p>
+          <p className="text-xs text-[#8892a4]">לחץ "בדוק חיבור" כדי לאמת את פרטי ה-Connector.</p>
+        )}
+
+        {/* Meta row: version + last sync */}
+        {status?.connected && (
+          <div className="mt-2 flex flex-wrap gap-4 text-xs text-[#5a6279]">
+            {status.connectorVersion && (
+              <span>גרסת Connector: <span className={`font-mono ${status.connectorVersion === '2.0.0' ? 'text-emerald-400' : 'text-amber-400'}`}>{status.connectorVersion}</span></span>
+            )}
+            {status.lastSyncAt && (
+              <span>סנכרון אחרון: <span className="text-[#8892a4]">{new Date(status.lastSyncAt).toLocaleString('he-IL')}</span></span>
+            )}
+            {!status.lastSyncAt && (
+              <span className="text-amber-400">לא סונכרן עדיין</span>
+            )}
+          </div>
         )}
 
         {/* Counts grid */}
