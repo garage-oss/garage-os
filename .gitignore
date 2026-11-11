@@ -10,8 +10,10 @@ tsconfig.tsbuildinfo
 .env.local
 .env*.local
 
-# Claude Code IDE settings — machine-specific
+# Claude Code IDE settings — machine-specific (but agents/ is project-level)
 .claude/
+!.claude/agents/
+!.claude/agents/*.md
 
 # Playwright / test screenshots
 screenshots/
