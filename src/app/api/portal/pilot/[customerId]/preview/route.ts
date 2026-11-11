@@ -41,6 +41,10 @@ export async function POST(
     },
   })
 
-  const base = process.env.CUSTOMER_PORTAL_BASE_URL ?? 'http://localhost:3000'
+  // Derive base URL from request so it works without CUSTOMER_PORTAL_BASE_URL being set
+  const fwdProto = _req.headers.get('x-forwarded-proto') ?? 'https'
+  const fwdHost  = _req.headers.get('x-forwarded-host') ?? _req.headers.get('host') ?? ''
+  const envBase  = process.env.CUSTOMER_PORTAL_BASE_URL ?? ''
+  const base     = envBase || (fwdHost ? `${fwdProto}://${fwdHost}` : 'http://localhost:3000')
   return NextResponse.json({ url: `${base}/portal/preview/${token}`, expiresAt, expiresInMinutes: 10 })
 }
