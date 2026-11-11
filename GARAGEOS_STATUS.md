@@ -1,6 +1,6 @@
 # GarageOS — Production Status
 
-**Last verified:** 2026-11-11  
+**Last verified:** 2026-11-11 (session 2)  
 **Verified by:** Production audit (automated)
 
 ---
@@ -10,7 +10,8 @@
 | Item | Status | Detail |
 |------|--------|--------|
 | URL | ✅ Live | https://garage-os-eta.vercel.app |
-| Deployed commit | ✅ `a31ce4d` | fix(portal): hide TEST MODE banner in production |
+| Deployed commit | ✅ `006f527` (pending Vercel build) | fix(portal): vehicle docs with supabase storage |
+| Last known live | ✅ `c745c5c` | feat(portal): feedback screen live |
 | Database | ✅ OK | Supabase PostgreSQL connected, latency ~2.8s |
 | Supabase Storage | ✅ OK | SUPABASE_URL + SUPABASE_SERVICE_KEY set |
 | Twilio | ⬜ Disabled | Not configured (not needed) |
@@ -65,6 +66,22 @@
 | env.ts validation | ✅ Working (non-printable char strip) |
 | Cron sync | ✅ Working (CRON_SECRET optional) |
 | Health endpoint | ✅ Returns commit SHA |
+| externalNo on pilot upsert | ✅ Fixed d4fefb1 (phone-sync compatibility) |
+| Preview URL (localhost bug) | ✅ Fixed 62d7c33 (uses request host) |
+| Vehicle docs (supabase hide) | ✅ Fixed 006f527 |
+
+## Portal Features
+
+| Feature | Status |
+|---------|--------|
+| Login (OTP) | ❌ SMS not configured — OTP not delivered |
+| Vehicles list | ✅ Works (NESHER fallback when no DB data) |
+| Service history | ✅ Works (NESHER fallback) |
+| Book service / quotes | ✅ Works |
+| Appointments | ✅ Works |
+| Document upload | ✅ Works (Supabase storage) |
+| Feedback form | ✅ NEW — built 2026-11-11 |
+| Staff preview | ✅ Fixed — now uses correct host URL |
 
 ---
 

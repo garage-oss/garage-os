@@ -1,13 +1,13 @@
 # GarageOS — Blockers
 
-**Updated:** 2026-11-11
+**Updated:** 2026-11-11 (session 2)
 
 ---
 
 ## 🔴 Critical Blockers (Pilot Cannot Start Without These)
 
 ### B1 — SMS Provider Not Configured
-**Status:** Blocking  
+**Status:** Blocking — owner deciding between WhatsApp Business, Israeli SIM, or separate SMS provider  
 **Impact:** Customers cannot receive OTP codes → cannot log in → pilot impossible  
 **Root Cause:** No SMS credentials in Vercel environment variables  
 **Required Action (Owner):**
@@ -85,10 +85,8 @@
 ---
 
 ### B7 — No Feedback Mechanism Implemented
-**Status:** Code not written yet  
-**Impact:** Cannot collect structured feedback from pilot customers  
-**Required Action (AI can implement):** Build a simple feedback form in the customer portal  
-**Effort:** ~2 hours of development + deployment
+**Status:** ✅ RESOLVED — deployed in commit c745c5c (2026-11-11)
+**Resolution:** 7-question Hebrew RTL feedback form at /portal/feedback, API at /api/portal/feedback, nav tab added, feedback stored in CustomerPilot.checklistNotes without schema migration.
 
 ---
 
@@ -96,6 +94,10 @@
 
 | Blocker | Resolution | Date |
 |---------|-----------|------|
+| B7: No feedback mechanism | Portal feedback form built + deployed c745c5c | Nov 2026 |
+| Preview URL using localhost:3000 | Fixed 62d7c33 — now uses request host | Nov 2026 |
+| Vehicle docs hidden with Supabase storage | Fixed 006f527 | Nov 2026 |
+| externalNo not set on pilot NESHER upsert | Fixed d4fefb1 | Nov 2026 |
 | Production deployment stuck at September 11 | Fast-forwarded main to saas-foundation | Nov 2026 |
 | TEST MODE banner confusing customers | Fixed in a31ce4d (guarded by NODE_ENV) | Nov 2026 |
 | importSource 'nesher' (lowercase) breaking data lookup | Fixed all 10 occurrences to 'NESHER' | Nov 2026 |

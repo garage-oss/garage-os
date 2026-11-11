@@ -1,6 +1,6 @@
 # GarageOS — Task List
 
-**Updated:** 2026-11-11
+**Updated:** 2026-11-11 (session 2)
 
 Priority: 🔴 Critical · 🟠 High · 🟡 Medium · 🟢 Low  
 Status: ⬜ Todo · 🔄 In Progress · ✅ Done · ❌ Blocked
@@ -31,10 +31,10 @@ Status: ⬜ Todo · 🔄 In Progress · ✅ Done · ❌ Blocked
 
 | # | Priority | Task | Owner | Status | Notes |
 |---|----------|------|-------|--------|-------|
-| 3.1 | 🟠 | Staff credentials helper — Supabase DB lookup | **AI** | 🔄 | Check DB for existing users |
-| 3.2 | 🟡 | Pilot dashboard: show NESHER customer search | **AI** | ⬜ | Allow search by name/phone/CLI no |
-| 3.3 | 🟡 | Portal: feedback collection screen | **AI** | ⬜ | Simple form after service experience |
-| 3.4 | 🟢 | Pilot dashboard: pilot readiness checklist per customer | **AI** | ⬜ | Phone verified, vehicles, history |
+| 3.1 | 🟠 | Staff credentials helper — Supabase DB lookup | **AI** | 🔄 | Requires Supabase MCP auth — blocked |
+| 3.2 | 🟡 | Pilot dashboard: show NESHER customer search | **AI** | ✅ | Already existed in customer-pilot page |
+| 3.3 | 🟡 | Portal: feedback collection screen | **AI** | ✅ | Built and deployed — commit c745c5c |
+| 3.4 | 🟢 | Pilot dashboard: pilot readiness checklist per customer | **AI** | ✅ | Already existed as Checklist component |
 
 ---
 
@@ -68,6 +68,11 @@ Status: ⬜ Todo · 🔄 In Progress · ✅ Done · ❌ Blocked
 
 | Task | Commit | Date |
 |------|--------|------|
+| Portal feedback collection screen | c745c5c | Nov 2026 |
+| Fix externalNo missing on pilot NESHER upsert | d4fefb1 | Nov 2026 |
+| Commit deploy-connector.ps1 to repo | d4fefb1 | Nov 2026 |
+| Fix preview URL localhost:3000 bug | 62d7c33 | Nov 2026 |
+| Fix vehicle docs hidden with Supabase storage | 006f527 | Nov 2026 |
 | Fix BOM in STORAGE_PROVIDER | f00b556 | Oct 2026 |
 | Fix importSource 'nesher' → 'NESHER' | c53fb82, 8f9fd70 | Oct 2026 |
 | Add commit SHA to health endpoint | 4485b99 | Oct 2026 |
