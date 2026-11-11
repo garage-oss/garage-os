@@ -1,6 +1,6 @@
 # GarageOS — Production Status
 
-**Last verified:** 2026-11-11 (session 2)  
+**Last verified:** 2026-11-11 (session 3)  
 **Verified by:** Production audit (automated)
 
 ---
@@ -10,8 +10,8 @@
 | Item | Status | Detail |
 |------|--------|--------|
 | URL | ✅ Live | https://garage-os-eta.vercel.app |
-| Deployed commit | ✅ `006f527` (pending Vercel build) | fix(portal): vehicle docs with supabase storage |
-| Last known live | ✅ `c745c5c` | feat(portal): feedback screen live |
+| Deployed commit | ✅ `f0350e6` (pending Vercel build) | fix(portal): organizationId isolation for all appointment/booking queries |
+| Last known live | ✅ `0f54064` | docs(tracking): session 2 updates |
 | Database | ✅ OK | Supabase PostgreSQL connected, latency ~2.8s |
 | Supabase Storage | ✅ OK | SUPABASE_URL + SUPABASE_SERVICE_KEY set |
 | Twilio | ⬜ Disabled | Not configured (not needed) |
@@ -69,6 +69,7 @@
 | externalNo on pilot upsert | ✅ Fixed d4fefb1 (phone-sync compatibility) |
 | Preview URL (localhost bug) | ✅ Fixed 62d7c33 (uses request host) |
 | Vehicle docs (supabase hide) | ✅ Fixed 006f527 |
+| organizationId missing in appointment/booking queries (5 locations) | ✅ Fixed f0350e6 |
 
 ## Portal Features
 

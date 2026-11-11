@@ -1,6 +1,6 @@
 # GarageOS — Task List
 
-**Updated:** 2026-11-11 (session 2)
+**Updated:** 2026-11-11 (session 3)
 
 Priority: 🔴 Critical · 🟠 High · 🟡 Medium · 🟢 Low  
 Status: ⬜ Todo · 🔄 In Progress · ✅ Done · ❌ Blocked
@@ -68,6 +68,7 @@ Status: ⬜ Todo · 🔄 In Progress · ✅ Done · ❌ Blocked
 
 | Task | Commit | Date |
 |------|--------|------|
+| Fix organizationId missing in appointment/booking queries (5 locations) | f0350e6 | Nov 2026 |
 | Portal feedback collection screen | c745c5c | Nov 2026 |
 | Fix externalNo missing on pilot NESHER upsert | d4fefb1 | Nov 2026 |
 | Commit deploy-connector.ps1 to repo | d4fefb1 | Nov 2026 |
