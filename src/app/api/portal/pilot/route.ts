@@ -97,8 +97,8 @@ export async function POST(req: NextRequest) {
       const nc = nesherData.customer
       customer = await prisma.customer.upsert({
         where:  { organizationId_importSource_importId: { organizationId: orgId, importSource: 'NESHER', importId: String(nc.cli_no) } },
-        create: { organizationId: orgId, name: nc.cli_name, phone: nc.phone ?? '', importSource: 'NESHER', importId: String(nc.cli_no) },
-        update: { name: nc.cli_name, phone: nc.phone ?? undefined },
+        create: { organizationId: orgId, name: nc.cli_name, phone: nc.phone ?? '', importSource: 'NESHER', importId: String(nc.cli_no), externalNo: String(nc.cli_no) },
+        update: { name: nc.cli_name, phone: nc.phone ?? undefined, externalNo: String(nc.cli_no) },
         select: { id: true, name: true },
       })
     }
