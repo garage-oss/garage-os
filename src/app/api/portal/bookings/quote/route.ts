@@ -70,7 +70,7 @@ export async function POST(req: NextRequest) {
   const { vehicleId, serviceType, complaint, mileage, save, bookingId } = body
 
   const vehicle = await prisma.vehicle.findFirst({
-    where: { id: vehicleId, customerId: ctx.customerId },
+    where: { id: vehicleId, customerId: ctx.customerId, organizationId: ctx.organizationId },
     select: { id: true, plate: true, make: true, model: true, year: true, importSource: true, importId: true },
   })
   if (!vehicle) return NextResponse.json({ error: 'רכב לא נמצא' }, { status: 404 })

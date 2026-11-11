@@ -9,7 +9,7 @@ export async function GET() {
   if (!ctx) return NextResponse.json({ error: 'לא מחובר' }, { status: 401 })
 
   const appointments = await prisma.appointment.findMany({
-    where:   { customerId: ctx.customerId, scheduledAt: { gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) } },
+    where:   { customerId: ctx.customerId, organizationId: ctx.organizationId, scheduledAt: { gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) } },
     orderBy: { scheduledAt: 'asc' },
     include: { vehicle: { select: { plate: true, make: true, model: true } } },
   })

@@ -33,7 +33,7 @@ export default async function CustomerPortalHome() {
       include: { vehicle: { select: { plate: true, make: true } } },
     }),
     prisma.appointment.findMany({
-      where:   { customerId: ctx.customerId, scheduledAt: { gte: new Date() } },
+      where:   { customerId: ctx.customerId, organizationId: ctx.organizationId, scheduledAt: { gte: new Date() } },
       orderBy: { scheduledAt: 'asc' },
       take:    3,
       include: { vehicle: { select: { plate: true, make: true, model: true } } },

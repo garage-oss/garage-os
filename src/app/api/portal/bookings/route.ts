@@ -9,7 +9,7 @@ export async function GET() {
   if (!ctx) return NextResponse.json({ error: 'לא מחובר' }, { status: 401 })
 
   const bookings = await prisma.serviceBooking.findMany({
-    where:   { customerId: ctx.customerId },
+    where:   { customerId: ctx.customerId, organizationId: ctx.organizationId },
     orderBy: { createdAt: 'desc' },
     include: {
       vehicle:      { select: { plate: true, make: true, model: true } },
@@ -37,9 +37,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'נדרשים רכב וסוג שירות' }, { status: 400 })
   }
 
-  // Verify vehicle belongs to customer
+  // Verify vehicle belongs to customer within this organization
   const vehicle = await prisma.vehicle.findFirst({
-    where: { id: vehicleId, customerId: ctx.customerId },
+    where: { id: vehicleId, customerId: ctx.customerId, organizationId: ctx.organizationId },
   })
   if (!vehicle) return NextResponse.json({ error: 'רכב לא נמצא' }, { status: 404 })
 

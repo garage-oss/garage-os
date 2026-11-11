@@ -22,12 +22,12 @@ export default async function AppointmentsPage() {
   const now = new Date()
   const [upcoming, past] = await Promise.all([
     prisma.appointment.findMany({
-      where:   { customerId: ctx.customerId, scheduledAt: { gte: now } },
+      where:   { customerId: ctx.customerId, organizationId: ctx.organizationId, scheduledAt: { gte: now } },
       orderBy: { scheduledAt: 'asc' },
       include: { vehicle: { select: { plate: true, make: true, model: true } } },
     }),
     prisma.appointment.findMany({
-      where:   { customerId: ctx.customerId, scheduledAt: { lt: now } },
+      where:   { customerId: ctx.customerId, organizationId: ctx.organizationId, scheduledAt: { lt: now } },
       orderBy: { scheduledAt: 'desc' },
       take:    10,
       include: { vehicle: { select: { plate: true, make: true, model: true } } },
