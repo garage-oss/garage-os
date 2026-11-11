@@ -3,7 +3,7 @@ import { requireCustomerSession } from '@/lib/customer-auth'
 import { prisma }                 from '@/lib/prisma'
 import { nesherCustomer }         from '@/lib/nesher-connector'
 import DocReminderBanner          from '@/components/portal/DocReminderBanner'
-import { Car, CalendarPlus, CalendarClock, ChevronLeft, Phone } from 'lucide-react'
+import { Car, CalendarPlus, CalendarClock, ChevronLeft, Phone, MessageSquare } from 'lucide-react'
 
 export const dynamic = 'force-dynamic'
 
@@ -234,6 +234,21 @@ export default async function CustomerPortalHome() {
             <ChevronLeft size={18} className="mr-auto text-slate-300" />
           </a>
         )}
+
+        {/* Feedback prompt */}
+        <Link
+          href="/portal/feedback"
+          className="flex items-center gap-4 w-full bg-white border-2 border-slate-100 text-slate-800 px-5 py-4 rounded-3xl shadow-sm active:scale-[0.98] transition-all"
+        >
+          <div className="w-12 h-12 bg-indigo-50 rounded-2xl flex items-center justify-center shrink-0">
+            <MessageSquare size={22} className="text-indigo-500" />
+          </div>
+          <div>
+            <p className="font-black text-lg leading-tight">שתף/י אותנו במשוב</p>
+            <p className="text-slate-500 text-sm">מה דעתך על הפורטל? דקה מזמנך</p>
+          </div>
+          <ChevronLeft size={18} className="mr-auto text-slate-300" />
+        </Link>
 
         {/* Logout */}
         <form action="/api/portal/auth/logout" method="POST">

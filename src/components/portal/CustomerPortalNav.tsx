@@ -2,7 +2,7 @@
 
 import Link            from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Home, Car, CalendarPlus, CalendarClock, Phone } from 'lucide-react'
+import { Home, Car, CalendarPlus, CalendarClock, Phone, MessageSquare } from 'lucide-react'
 import { toWhatsAppUrl } from '@/lib/sms'
 
 function WaIcon() {
@@ -19,6 +19,7 @@ const NAV = [
   { href: '/portal/vehicles',     icon: Car,           label: 'רכבים'       },
   { href: '/portal/book-service', icon: CalendarPlus,  label: 'קביעת טיפול' },
   { href: '/portal/appointments', icon: CalendarClock, label: 'תורים'       },
+  { href: '/portal/feedback',     icon: MessageSquare, label: 'משוב'        },
 ]
 
 export function CustomerPortalNav({ orgName, orgPhone }: { orgName: string; orgPhone: string | null }) {
