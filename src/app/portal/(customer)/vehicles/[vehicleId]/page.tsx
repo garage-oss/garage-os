@@ -54,8 +54,9 @@ export default async function VehicleDetailPage({ params }: Props) {
   })
 
   const hasHistory      = workOrders.length > 0 || (nesherHistory && nesherHistory.length > 0)
-  // Show vehicle documents only when storage is configured (S3 in prod, local in dev)
-  const vehicleDocsEnabled = process.env.STORAGE_PROVIDER === 's3' || process.env.NODE_ENV !== 'production'
+  // Show vehicle documents when any real storage backend is configured
+  const sp = (process.env.STORAGE_PROVIDER ?? '').trim().toLowerCase()
+  const vehicleDocsEnabled = sp === 's3' || sp === 'supabase' || process.env.NODE_ENV !== 'production'
 
   return (
     <div className="max-w-lg mx-auto" dir="rtl">
