@@ -60,16 +60,34 @@ class DemoSmsProvider implements SmsProvider {
   }
 }
 
+function xmlEscape(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;').replace(/'/g, '&apos;')
+}
+
+// InforU SMS API (SendMessageXml.ashx), per InforU "SMS API" v6.x docs:
+//   <User><Username/><ApiToken/></User>  — token from Account Details > API Token
+//   <Content Type="sms"><Message/></Content>
+//   <Recipients><PhoneNumber/></Recipients>
+//   <Settings><Sender/></Settings>        — sender ID shown on the handset
+// The previous payload used <ApiKey> and <SmsMessage>, which are not part of
+// that schema.
 class InForuProvider implements SmsProvider {
-  constructor(private username: string, private apiKey: string) {}
+  constructor(private username: string, private apiToken: string, private sender: string) {}
 
   async sendOtp(phone: string, code: string): Promise<{ success: boolean; error?: string }> {
-    const message = `קוד הכניסה שלך ל-GarageOS: ${code}. תקף ל-5 דקות.`
-    // Normalize to Israeli international format
+    const message = `${process.env.SMS_BRAND_NAME ?? 'דוד מלכה'} - קוד כניסה: ${code} (תקף 5 דקות)`
+    // InforU examples use local Israeli format (05XXXXXXXX)
     const digits = phone.replace(/\D/g, '')
-    const intl = digits.startsWith('972') ? digits : digits.startsWith('0') ? '972' + digits.slice(1) : '972' + digits
+    const local  = digits.startsWith('972') ? '0' + digits.slice(3) : digits.startsWith('0') ? digits : '0' + digits
 
-    const xml = `<Inforu><User><Username>${this.username}</Username><ApiKey>${this.apiKey}</ApiKey></User><Content><SmsMessage>${message}</SmsMessage></Content><Recipients><PhoneNumber>${intl}</PhoneNumber></Recipients><Settings><DefaultRegion>IL</DefaultRegion></Settings></Inforu>`
+    const xml =
+      `<Inforu>` +
+        `<User><Username>${xmlEscape(this.username)}</Username><ApiToken>${xmlEscape(this.apiToken)}</ApiToken></User>` +
+        `<Content Type="sms"><Message>${xmlEscape(message)}</Message></Content>` +
+        `<Recipients><PhoneNumber>${local}</PhoneNumber></Recipients>` +
+        `<Settings><Sender>${xmlEscape(this.sender)}</Sender></Settings>` +
+      `</Inforu>`
 
     try {
       const res = await fetch('https://api.inforu.co.il/SendMessageXml.ashx', {
@@ -145,7 +163,11 @@ class VonageProvider implements SmsProvider {
 
 function buildProvider(): SmsProvider | null {
   if (process.env.SMS_INFORU_USERNAME && process.env.SMS_INFORU_API_KEY) {
-    return new InForuProvider(process.env.SMS_INFORU_USERNAME, process.env.SMS_INFORU_API_KEY)
+    return new InForuProvider(
+      process.env.SMS_INFORU_USERNAME,
+      process.env.SMS_INFORU_API_KEY,
+      process.env.SMS_INFORU_SENDER ?? 'DavidMalka',
+    )
   }
   if (process.env.SMS_019_USERNAME && process.env.SMS_019_PASSWORD) {
     return new Provider019(process.env.SMS_019_USERNAME, process.env.SMS_019_PASSWORD)
