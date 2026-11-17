@@ -12,6 +12,7 @@
  * NESHER is READ-ONLY. No write of any kind goes back to NESHER.
  */
 
+import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 
 const CONNECTOR_URL = process.env.NESHER_CONNECTOR_URL    ?? ''
@@ -253,6 +254,8 @@ export async function runPhoneSync(orgId: string): Promise<PhoneSyncResult> {
 
   const PLACEHOLDER_PHONES = new Set(['000000000', '0000000000', '', '0'])
 
+  const pending: { id: string; phone: string }[] = []
+
   for (const cust of garageCusts) {
     const externalNo = cust.externalNo
     if (!externalNo) { skippedNoMatch++; continue }
@@ -267,15 +270,28 @@ export async function runPhoneSync(orgId: string): Promise<PhoneSyncResult> {
       continue
     }
 
+    pending.push({ id: cust.id, phone: newPhone })
+  }
+
+  // Batched updates: one UPDATE ... FROM (VALUES ...) per chunk instead of one
+  // round trip per customer. A full sync of ~1,400 customers previously took
+  // ~30 minutes and hit the 60 s function timeout on every call.
+  const CHUNK = 500
+  for (let i = 0; i < pending.length; i += CHUNK) {
+    const chunk = pending.slice(i, i + CHUNK)
     try {
-      await prisma.customer.update({
-        where: { id: cust.id },
-        data:  { phone: newPhone },
-      })
-      updatedInGarage++
+      const values = Prisma.join(chunk.map(c => Prisma.sql`(${c.id}, ${c.phone})`))
+      const n = await prisma.$executeRaw`
+        UPDATE "Customer" AS c
+        SET    phone = v.phone, "updatedAt" = NOW()
+        FROM   (VALUES ${values}) AS v(id, phone)
+        WHERE  c.id = v.id AND c."organizationId" = ${orgId}
+      `
+      updatedInGarage += n
+      failed          += chunk.length - n
     } catch (e) {
-      failed++
-      errors.push(`cust ${cust.id}: ${e instanceof Error ? e.message : String(e)}`)
+      failed += chunk.length
+      errors.push(`phone batch ${i / CHUNK + 1}: ${e instanceof Error ? e.message : String(e)}`)
     }
   }
 
